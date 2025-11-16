@@ -181,6 +181,7 @@ class Rectangle(Shape):
         # 3 hangar slots for triangle ships
         self.hangar = [True, True, True]     # True = available
         self.deployed = []                   # stores spawned Triangle objects
+        self.hangar_triangles = [None, None, None] # fighters for each slot (after deploy)
 
     def can_deploy(self, slot):
         return 0 <= slot < 3 and self.hangar[slot]
@@ -193,12 +194,17 @@ class Rectangle(Shape):
         # Mark slot as used
         self.hangar[slot] = False
 
-        # Spawn offset
+        # Spawn slightly in front of the rectangle
         offset = Vector2(50, 0).rotate(-self.angle)
-
         tri = Triangle(self.pos + offset)
         tri.mover.angle = self.angle    # start facing same direction
+
+        # Remember which slot this triangle came from
+        tri.hangar_slot = slot
+        tri.recalling = False
+
         self.deployed.append(tri)
+        self.hangar_triangles[slot] = tri
         return tri
 
 
@@ -214,3 +220,7 @@ class Triangle(Shape):
             self.color,
             [(20, 0), (0, 40), (40, 40)]
         )
+
+        # recall state
+        self.recalling = False
+        self.hangar_slot = None

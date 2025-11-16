@@ -4,6 +4,7 @@ from pygame.math import Vector2
 from shape import Shape, EnemyShape, Rectangle, Triangle
 from mover import Mover
 from projectile import Projectile
+from hangar_ui import HangarUI
 import sys
 
 SEPARATION_ITER = 2  # How many times to push shapes apart when they overlap
@@ -21,15 +22,8 @@ def run_game():
     clock = pygame.time.Clock()
 
     # --- Hangar UI setup ---
-    preview_size = 40  # size of mini triangle preview
-    hangar_previews = [
-        {"preview_pos": pygame.Vector2(160, 565), "show_button": False, "button_rect": pygame.Rect(0,0,80,25)},
-        {"preview_pos": pygame.Vector2(320, 565), "show_button": False, "button_rect": pygame.Rect(0,0,80,25)},
-        {"preview_pos": pygame.Vector2(480, 565), "show_button": False, "button_rect": pygame.Rect(0,0,80,25)},
-    ]
     font = pygame.font.SysFont(None, 20)
-
-
+    hangar_ui = HangarUI(font)
 
     # --- Main player (Rectangle with hangar) ---
     main_player = Rectangle((400, 300))
@@ -60,39 +54,18 @@ def run_game():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                clicked_ui = False
-
-                # Check deploy buttons
-                for i, slot in enumerate(hangar_previews):
-                    if slot["show_button"] and slot["button_rect"].collidepoint(event.pos):
-                        if main_player.can_deploy(i):
-                            new_tri = main_player.deploy(i)
-                            if new_tri:
-                                player_shapes.append(new_tri)
-                        slot["show_button"] = False  # hide button after deploying
-                        clicked_ui = True
-                        break
-
-                # Check mini previews
-                if not clicked_ui:
-                    for i, slot in enumerate(hangar_previews):
-                        preview_rect = pygame.Rect(slot["preview_pos"].x - preview_size//2,
-                                                slot["preview_pos"].y - preview_size//2,
-                                                preview_size, preview_size)
-                        if preview_rect.collidepoint(event.pos):
-                            slot["show_button"] = not slot["show_button"] # show deploy button above this preview
-                            clicked_ui = True
-                            break
+                # First let the hangar UI handle deploy/recall buttons and preview toggles.
+                clicked_ui = hangar_ui.handle_mouse_button_down(event.pos, main_player, player_shapes)
 
                 # Start selection if clicked elsewhere
                 if not clicked_ui:
-                    selecting = True # Start drag-selection when the left mouse button is pressed
-                    selection_start = event.pos # Remember the mouse position at the moment selection started
-                    selection_rect = pygame.Rect(event.pos, (0, 0)) # Initialize the selection rectangle starting at the mouse position
+                    selecting = True  # Start drag-selection when the left mouse button is pressed
+                    selection_start = event.pos  # Remember the mouse position at the moment selection started
+                    # Initialize the selection rectangle starting at the mouse position
+                    selection_rect = pygame.Rect(event.pos, (0, 0))
                     for shape in player_shapes:
-                        shape.selected = shape.point_inside(event.pos) # Select a single shape immediately if the click is directly on it (without drag)
-
-            
+                        # Select a shape immediately if the click is directly on it (without drag)
+                        shape.selected = shape.point_inside(event.pos)
             elif event.type == pygame.MOUSEMOTION and selecting:
                 mx, my = event.pos # Current mouse position while dragging
                 sx, sy = selection_start # The initial selection starting point (mouse down position)
@@ -108,8 +81,11 @@ def run_game():
                         shape.selected = rect.collidepoint(shape.pos) # Mark shapes as selected if their position is inside the final selection rectangle
             
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                # Collect all player shapes that are currently selected when right-click occurs
-                selected_shapes = [s for s in player_shapes if s.selected]
+                # Collect selected shapes, but ignore recalled fighters
+                selected_shapes = [
+                    s for s in player_shapes
+                    if s.selected and not getattr(s, "recalling", False)
+                ]
                 if selected_shapes:
                     # Calculate the average position (center) of all selected shapes (formation center)
                     center = sum((s.pos for s in selected_shapes), Vector2(0, 0)) / len(selected_shapes)
@@ -126,6 +102,29 @@ def run_game():
         # --- Update movement ---
         for shape in player_shapes:
             shape.mover.update(dt)
+        # --- Handle recalled fighters: fly back to main ship and re-dock ---
+        recalled_done = []
+        for shape in player_shapes:
+            if isinstance(shape, Triangle) and getattr(shape, "recalling", False):
+                # Always steer toward the main ship
+                shape.mover.set_target(main_player.pos)
+
+                # When close enough, mark for docking
+                if (shape.pos - main_player.pos).length() < 50:
+                    recalled_done.append(shape)
+
+        for tri in recalled_done:
+            # Remove from active shapes
+            if tri in player_shapes:
+                player_shapes.remove(tri)
+            if tri in main_player.deployed:
+                main_player.deployed.remove(tri)
+
+            slot = getattr(tri, "hangar_slot", None)
+            if slot is not None and 0 <= slot < len(main_player.hangar):
+                # Make slot available again
+                main_player.hangar[slot] = True
+                main_player.hangar_triangles[slot] = None
 
         # Enemies: approach to within range, then hold
         for e in enemy_shapes:
@@ -188,21 +187,30 @@ def run_game():
 
         # --- Collisions (residual): small damage from touching using class-level DPS ---
         for _ in range(SEPARATION_ITER):
+            # Player-player separation:
+            # - Triangles still push other triangles.
+            # - Triangles do NOT push the main ship (or any non-triangle player shape).
             for i, a in enumerate(player_shapes):
                 for b in player_shapes[i + 1:]:
-                    Mover.separate_rotated(a, b)
+                    if isinstance(a, Triangle) and isinstance(b, Triangle):
+                        Mover.separate_rotated(a, b)
+                    elif not isinstance(a, Triangle) and not isinstance(b, Triangle):
+                        Mover.separate_rotated(a, b)
+            # Enemy-enemy separation unchanged.
             for i, a in enumerate(enemy_shapes):
                 for b in enemy_shapes[i + 1:]:
                     Mover.separate_rotated(a, b)
 
+        # Player-enemy collision damage still applies, but triangles do not push enemies.
         for p in player_shapes:
             for e in enemy_shapes:
                 if p.collides_with(e):
                     dmg = Shape.COLLISION_DPS * dt
                     p.take_damage(dmg)
                     e.take_damage(dmg)
-                    for _ in range(SEPARATION_ITER):
-                        Mover.separate_rotated(p, e)
+                    if not isinstance(p, Triangle):
+                        for _ in range(SEPARATION_ITER):
+                            Mover.separate_rotated(p, e)
 
         # --- Draw ---
         screen.fill((20, 20, 26))
@@ -219,22 +227,7 @@ def run_game():
             temp.normalize()
             pygame.draw.rect(screen, (100, 255, 100), temp, 1)
 
-        # --- Draw hangar previews & deploy buttons ---
-        for i, slot in enumerate(hangar_previews):
-            # Draw mini triangle preview
-            tri_surf = pygame.Surface((preview_size, preview_size), pygame.SRCALPHA)
-            color = (255, 200, 0) if main_player.hangar[i] else (100, 100, 100)
-            pygame.draw.polygon(tri_surf, color, [(preview_size//2, 0), (0, preview_size), (preview_size, preview_size)])
-            screen.blit(tri_surf, (slot["preview_pos"].x - preview_size//2, slot["preview_pos"].y - preview_size//2))
-
-            # Draw deploy button above preview if active
-            if slot["show_button"]:
-                btn_rect = pygame.Rect(slot["preview_pos"].x - 40, slot["preview_pos"].y - 65, 80, 25)
-                slot["button_rect"] = btn_rect
-                pygame.draw.rect(screen, (40, 160, 40), btn_rect, border_radius=6)
-                pygame.draw.rect(screen, (0, 0, 0), btn_rect, 2, border_radius=6)
-                text = font.render("Deploy", True, (255, 255, 255))
-                screen.blit(text, (btn_rect.x + 10, btn_rect.y + 3))
-
+        # --- Draw hangar previews & deploy/recall buttons ---
+        hangar_ui.draw(screen, main_player, player_shapes)
 
         pygame.display.flip()
