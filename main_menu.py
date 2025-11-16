@@ -1,4 +1,3 @@
-
 import pygame
 import sys
 from gameScreen import run_game
@@ -24,8 +23,8 @@ def main():
 
     # buttons
     btn_w, btn_h = 240, 64
-    play_btn = Button((WIDTH//2 - btn_w//2, 300, btn_w, btn_h), "Play", btn_font)
-    exit_btn = Button((WIDTH//2 - btn_w//2, 390, btn_w, btn_h), "Exit", btn_font)
+    play_button = Button((WIDTH//2 - btn_w//2, 300, btn_w, btn_h), "Play", btn_font)
+    exit_button = Button((WIDTH//2 - btn_w//2, 390, btn_w, btn_h), "Exit", btn_font)
 
     running = True
     while running:
@@ -33,13 +32,13 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
-            if play_btn.handle_event(event):
+            if play_button.handle_event(event):
                 # run the user's game; return here after ESC or window close inside the game
                 run_game()
                 # Recreate title surface after returning (safe on some platforms)
                 title_surf = title_font.render("SpaceGame", True, (255,255,255))
 
-            if exit_btn.handle_event(event):
+            if exit_button.handle_event(event):
                 running = False
 
         # Clear the entire screen and fill it with a dark background color
@@ -53,8 +52,8 @@ def main():
                 pygame.draw.circle(screen, (60,60,80), (x, y), 1)
 
         screen.blit(title_surf, title_rect)
-        play_btn.draw(screen)
-        exit_btn.draw(screen)
+        play_button.draw(screen)
+        exit_button.draw(screen)
 
         pygame.display.flip() # Update the entire screen to show everything drawn in this frame
         clock.tick(60)
