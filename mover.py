@@ -49,18 +49,21 @@ class Mover:
     @staticmethod
     def separate_rotated(ship_a, ship_b):
         """
-        Approximate oriented bounding box (OBB) collision resolver between two shapes.
-        Each spaceship has a mover with pos, size, and angle.
+        Pixel-based collision resolver between two ships.
+        Uses their rotated sprite masks instead of big AABBs.
         """
         a = ship_a.mover
         b = ship_b.mover
 
-        rotated_a = pygame.transform.rotate(ship_a.base_surf, a.angle)
-        rotated_b = pygame.transform.rotate(ship_b.base_surf, b.angle)
-        rect_a = rotated_a.get_rect(center=a.world_pos)
-        rect_b = rotated_b.get_rect(center=b.world_pos)
+        surf_a, mask_a = ship_a.get_rotated_sprite()
+        surf_b, mask_b = ship_b.get_rotated_sprite()
 
-        if not rect_a.colliderect(rect_b):
+        rect_a = ship_a.get_sprite_rect(surf_a)
+        rect_b = ship_b.get_sprite_rect(surf_b)
+
+        # pixel-perfect overlap check
+        offset = (rect_b.left - rect_a.left, rect_b.top - rect_a.top)
+        if mask_a.overlap(mask_b, offset) is None:
             return
 
         dx = rect_a.centerx - rect_b.centerx
@@ -71,13 +74,15 @@ class Mover:
         if overlap_x <= 0 or overlap_y <= 0:
             return
 
-        # Push direction along smaller overlap
-        if overlap_x < overlap_y:
-            push = Vector2(overlap_x / 2 * (1 if dx > 0 else -1), 0)
-        else:
-            push = Vector2(0, overlap_y / 2 * (1 if dy > 0 else -1))
+        MAX_PUSH = 2.0  # cap per call
 
-        # Small damping to reduce jitter
+        if overlap_x < overlap_y:
+            push_mag = min(overlap_x / 2.0, MAX_PUSH)
+            push = Vector2(push_mag * (1 if dx > 0 else -1), 0)
+        else:
+            push_mag = min(overlap_y / 2.0, MAX_PUSH)
+            push = Vector2(0, push_mag * (1 if dy > 0 else -1))
+
         push *= 0.95
         a.world_pos += push
         b.world_pos -= push

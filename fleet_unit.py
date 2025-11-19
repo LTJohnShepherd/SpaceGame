@@ -126,9 +126,6 @@ class SpaceUnit(ABC):
         rect = self.get_sprite_rect(surf)
         surface.blit(surf, rect.topleft)
 
-        if self.selected and not self.is_enemy:
-            pygame.draw.rect(surface, (0, 255, 0), rect, 2, border_radius=2)
-
         # --- Optional: range circle (for players when selected) ---
         if show_range:
             pygame.draw.circle(surface, (70, 90, 120), (int(self.pos.x), int(self.pos.y)), int(self.fire_range), 1)
@@ -187,7 +184,21 @@ class ExpeditionShip(SpaceUnit):
         return "expeditionship"
 
     def __init__(self, start_pos, **kwargs):
-        super().__init__(start_pos, ship_size=(80, 40), **kwargs)
+        # load sprite first
+        sprite = pygame.image.load("Images/ExpeditionShip.png").convert_alpha()
+
+        # fix orientation (rotate 90 degrees counter-clockwise)
+        sprite = pygame.transform.rotate(sprite, -90)
+
+        # use sprite size instead of tiny rectangle
+        scaled_sprite = pygame.transform.smoothscale(
+            sprite,
+            (sprite.get_width() // 4, sprite.get_height() // 4)
+        )
+
+        # update ship size
+        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
+        self.base_surf = scaled_sprite
 
         # 3 hangar slots for light ships
         # True = interceptor in hangar (assigned & not currently deployed)
@@ -212,7 +223,7 @@ class ExpeditionShip(SpaceUnit):
                 if slot < len(alive_ids):
                     self.hangar_assignments[slot] = alive_ids[slot]
                     self.hangar[slot] = True
-
+                    
     def can_deploy(self, slot):
         return 0 <= slot < 3 and self.hangar[slot]
 
