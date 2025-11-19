@@ -1,6 +1,11 @@
 import pygame
 from fleet_unit import Frigate
 
+# preview sprite for ExpeditionShip
+EXPEDITION_PREVIEW_IMG = pygame.image.load("Previews/Carrier_T1_Preview.png")
+# preview sprite for Frigate
+FRIGATE_PREVIEW_IMG = pygame.image.load("Previews/Frigate_Preview.png")
+
 
 def draw_triangle(surface, center, width, height, color, thickness=2):
     # Same helper as in gameScreen.py
@@ -15,7 +20,6 @@ def draw_triangle(surface, center, width, height, color, thickness=2):
 
     pygame.draw.polygon(surface, color, [top_right, bottom_right, left_tip], thickness)
 
-
 def draw_diamond(surface, center, width, height, color, thickness=2):
     # Same shape logic as in gameScreen (just scaled)
     cx, cy = int(center[0]), int(center[1])
@@ -28,7 +32,6 @@ def draw_diamond(surface, center, width, height, color, thickness=2):
         (cx - hw, cy)        # left
     ]
     pygame.draw.polygon(surface, color, points, thickness)
-
 
 def draw_hex(surface, center, width, height, color, thickness=2):
     # Same helper as in gameScreen.py
@@ -47,7 +50,6 @@ def draw_hex(surface, center, width, height, color, thickness=2):
     ]
     pygame.draw.polygon(surface, color, points, thickness)
 
-
 class HangarUI:
     """Manages hangar light craft previews and deploy/recall buttons for the main ship."""
 
@@ -56,27 +58,27 @@ class HangarUI:
         self.preview_size = preview_size
 
         # --- Unified preview row layout ---
-        row_y = 565
+        row_y = 630
 
         # --- ExpeditionShip preview (bigger, on the left) ---
         self.expeditionship_preview = {
-            'preview_position': pygame.Vector2(60, row_y),
-            'width': 80,
-            'height': 50,
+            'preview_position': pygame.Vector2(80, row_y),
+            'width': 90,
+            'height': 60,
         }
 
         # --- Frigate preview (between ExpeditionShip and interceptors) ---
         self.frigate_preview = {
-            'preview_position': pygame.Vector2(170, row_y),
+            'preview_position': pygame.Vector2(190, row_y),
             'width': 60,
             'height': 35,
         }
 
         # --- 3 interceptor previews, evenly spaced to the right of the ExpeditionShip ---
         self.hangar_slots = [
-            {'preview_position': pygame.Vector2(260, row_y), 'show_button': False, 'button_rect': pygame.Rect(0, 0, 80, 25)},
-            {'preview_position': pygame.Vector2(360, row_y), 'show_button': False, 'button_rect': pygame.Rect(0, 0, 80, 25)},
-            {'preview_position': pygame.Vector2(460, row_y), 'show_button': False, 'button_rect': pygame.Rect(0, 0, 80, 25)},
+            {'preview_position': pygame.Vector2(280, row_y), 'show_button': False, 'button_rect': pygame.Rect(0, 0, 80, 25)},
+            {'preview_position': pygame.Vector2(380, row_y), 'show_button': False, 'button_rect': pygame.Rect(0, 0, 80, 25)},
+            {'preview_position': pygame.Vector2(480, row_y), 'show_button': False, 'button_rect': pygame.Rect(0, 0, 80, 25)},
         ]
 
     def handle_mouse_button_down(self, mouse_pos, main_player, player_shapes):
@@ -129,13 +131,12 @@ class HangarUI:
         preview_size = self.preview_size
         font = self.font
         
-        # --- Draw ExpeditionShip preview (rectangle + hex overlay) ---
+        # --- Draw ExpeditionShip preview (sprite + hex overlay) ---
         ms_center = self.expeditionship_preview['preview_position']
         ms_w = self.expeditionship_preview['width']
         ms_h = self.expeditionship_preview['height']
 
-        ms_surf = pygame.Surface((ms_w, ms_h), pygame.SRCALPHA)
-        pygame.draw.rect(ms_surf, main_player.color, pygame.Rect(0, 0, ms_w, ms_h), border_radius=4)
+        ms_surf = pygame.transform.smoothscale(EXPEDITION_PREVIEW_IMG, (ms_w, ms_h))
 
         ms_x = int(ms_center.x - ms_w / 2)
         ms_y = int(ms_center.y - ms_h / 2)
@@ -176,7 +177,7 @@ class HangarUI:
         pygame.draw.rect(screen, (10, 10, 10), bg_rect, 1, border_radius=3)
 
         # ---------------------------------------------------------
-        # --- Frigate preview (rectangle + diamond overlay) ---
+        # --- Frigate preview (sprite + diamond overlay) ---
         frigate = None
         for s in player_shapes:
             if isinstance(s, Frigate):
@@ -185,31 +186,34 @@ class HangarUI:
 
         if frigate is not None and frigate.health > 0.0:
             fr_center = self.frigate_preview['preview_position']
-            fr_w = self.frigate_preview['width']
-            fr_h = self.frigate_preview['height']
+            fr_w = self.frigate_preview['width'] * 2
+            fr_h = self.frigate_preview['height'] * 2
 
-            fr_surf = pygame.Surface((fr_w, fr_h), pygame.SRCALPHA)
-            pygame.draw.rect(fr_surf, frigate.color, pygame.Rect(0, 0, fr_w, fr_h), border_radius=4)
+            # use frigate preview image
+            fr_img = pygame.transform.smoothscale(
+                FRIGATE_PREVIEW_IMG,
+                (int(fr_w), int(fr_h))
+            )
 
             fr_x = int(fr_center.x - fr_w / 2)
             fr_y = int(fr_center.y - fr_h / 2)
-            screen.blit(fr_surf, (fr_x, fr_y))
+            screen.blit(fr_img, (fr_x, fr_y))
 
             # Diamond overlay, scaled with same proportions as in gameScreen
             draw_diamond(
                 screen,
                 (fr_center.x, fr_center.y),
-                fr_w * 0.6,
-                fr_h * 1.4,
+                fr_w * 0.3,
+                fr_h * 0.75,
                 (80, 255, 190),
                 2
             )
 
             # Frigate health bar BELOW the preview
-            bar_w = fr_w
+            bar_w = fr_w * 0.6
             bar_h = 5
-            pad = 10
-            bar_x = fr_x
+            pad = -1.1
+            bar_x = int(fr_x + (fr_w - bar_w) / 2)
             bar_y = fr_y + fr_h + pad
 
             pct = 0.0

@@ -6,7 +6,7 @@ from gameScreen import run_game
 from main_menu import main as main_menu
 
 def end_screen():
-    WIDTH, HEIGHT = 800, 600
+    WIDTH, HEIGHT = 1280, 720
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Game Over")
 

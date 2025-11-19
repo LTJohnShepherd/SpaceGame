@@ -7,7 +7,7 @@ from ui import Button
 def main():
    
     pygame.init() # Initialize all imported Pygame modules (must be called before using Pygame features)
-    WIDTH, HEIGHT = 800, 600
+    WIDTH, HEIGHT = 1280, 720
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("SpaceGame - Main Menu")
 

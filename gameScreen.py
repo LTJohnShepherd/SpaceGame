@@ -73,8 +73,8 @@ def in_range(a, b, r):  # Helper function: checks if the distance between object
 
 
 def run_game():
-    
-    screen = pygame.display.set_mode((800, 600))
+    WIDTH, HEIGHT = 1280, 720
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("SpaceGame")
 
     clock = pygame.time.Clock()
@@ -327,8 +327,8 @@ def run_game():
                 draw_diamond(
                     screen,
                     (spaceship.pos.x, spaceship.pos.y),
-                    ship_w * 0.6,   # same width factor as ExpeditionShip hex
-                    ship_h * 1.4,     # same height factor as ExpeditionShip hex
+                    ship_w * 0.25,   # same width factor as ExpeditionShip hex
+                    ship_h * 0.6,     # same height factor as ExpeditionShip hex
                     (80, 255, 190),
                     2
                 )

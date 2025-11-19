@@ -3,6 +3,11 @@ import pygame
 from fleet_unit import ExpeditionShip, Frigate, Interceptor
 from ui import Button
 
+# preview sprite for ExpeditionShip
+EXPEDITION_PREVIEW_IMG = pygame.image.load("Previews/Carrier_T1_Preview.png")
+# preview sprite for Frigate
+FRIGATE_PREVIEW_IMG = pygame.image.load("Previews/Frigate_Preview.png")
+
 
 def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
     """
@@ -43,7 +48,7 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
 
     # Layout for previews
     # ExpeditionShip (left) - slightly larger
-    ms_w, ms_h = 140, 160
+    ms_w, ms_h = 170, 160
     ms_rect = pygame.Rect(60, height // 2 - ms_h // 2, ms_w, ms_h)
 
     # Light Crafts column (middle) - more spaced
@@ -178,7 +183,8 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
         ms_label_y = labels_y
         screen.blit(ms_label, (ms_label_x, ms_label_y))
 
-        pygame.draw.rect(screen, main_player.color, ms_rect, border_radius=10)
+        ms_surf = pygame.transform.smoothscale(EXPEDITION_PREVIEW_IMG, (ms_rect.width, ms_rect.height))
+        screen.blit(ms_surf, ms_rect.topleft)
 
         bar_pad = 6
         bar_h = 6
@@ -266,9 +272,15 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
         screen.blit(fr_label, (fr_label_x, fr_label_y))
 
         if frigates:
-            pygame.draw.rect(screen, frigates[0].color, fr_rect, border_radius=10)
-
             f = frigates[0]
+
+            # draw frigate preview image
+            fr_img = pygame.transform.smoothscale(
+                FRIGATE_PREVIEW_IMG,
+                (fr_rect.width, fr_rect.height)
+            )
+            screen.blit(fr_img, fr_rect.topleft)
+
             bar_pad = 6
             bar_h = 6
             bar_w = fr_rect.width
