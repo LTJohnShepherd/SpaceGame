@@ -2,16 +2,23 @@ from abc import ABC, abstractmethod
 import pygame
 from mover import Mover
 from pygame.math import Vector2
+from config import (
+    PLAYER_DEFAULT_SPEED,
+    PLAYER_DEFAULT_ROT_SPEED,
+    PLAYER_DEFAULT_FIRE_RANGE,
+    PLAYER_DEFAULT_FIRE_COOLDOWN,
+    PLAYER_DEFAULT_BULLET_DAMAGE,
+)
 import math
 
 class SpaceUnit(ABC):
     # ---- Class-level defaults for player shapes ----
     DEFAULT_COLOR = (255, 200, 0)
-    DEFAULT_SPEED = 300.0
-    DEFAULT_ROT_SPEED = 360.0
-    DEFAULT_FIRE_RANGE = 230.0
-    DEFAULT_FIRE_COOLDOWN = 0.55
-    DEFAULT_BULLET_DAMAGE = 12.0
+    DEFAULT_SPEED = PLAYER_DEFAULT_SPEED
+    DEFAULT_ROT_SPEED = PLAYER_DEFAULT_ROT_SPEED
+    DEFAULT_FIRE_RANGE = PLAYER_DEFAULT_FIRE_RANGE
+    DEFAULT_FIRE_COOLDOWN = PLAYER_DEFAULT_FIRE_COOLDOWN
+    DEFAULT_BULLET_DAMAGE = PLAYER_DEFAULT_BULLET_DAMAGE
 
     COLLISION_DPS = 20.0
 
@@ -166,168 +173,3 @@ class SpaceUnit(ABC):
 
     def point_inside(self, point):
         return self.mover.point_inside(point)
-
-
-class PirateFrigate(SpaceUnit):
-    # ---- Enemy defaults ----
-    DEFAULT_COLOR = (220, 60, 60)
-    DEFAULT_SPEED = 140.0
-    DEFAULT_ROT_SPEED = 240.0
-    DEFAULT_FIRE_RANGE = 260.0
-    DEFAULT_FIRE_COOLDOWN = 0.8
-    DEFAULT_BULLET_DAMAGE = 10.0
-
-    def shape_id(self):
-        return "pirate"
-
-    def __init__(self, start_pos, **kwargs):
-        # load pirate sprite
-        sprite = pygame.image.load("Images/PirateCruiser.png").convert_alpha()
-
-        # rotate so it faces to the right (like other ships)
-        sprite = pygame.transform.rotate(sprite, -90)
-
-        # scale it down (adjust divisor for size)
-        scaled_sprite = pygame.transform.smoothscale(
-            sprite,
-            (sprite.get_width() // 6, sprite.get_height() // 6)
-        )
-
-        # use sprite size for collisions / drawing
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
-        self.base_surf = scaled_sprite
-
-
-class ExpeditionShip(SpaceUnit):
-    """Main player-controlled rectangle with a 3-slot hangar."""
-    
-    def shape_id(self):
-        return "expeditionship"
-
-    def __init__(self, start_pos, **kwargs):
-        # load sprite first
-        sprite = pygame.image.load("Images/ExpeditionShip.png").convert_alpha()
-
-        # fix orientation (rotate -90 degrees clockwise)
-        sprite = pygame.transform.rotate(sprite, -90)
-
-        # use sprite size instead of tiny rectangle
-        scaled_sprite = pygame.transform.smoothscale(
-            sprite,
-            (sprite.get_width() // 4, sprite.get_height() // 4)
-        )
-
-        # update ship size
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
-        self.base_surf = scaled_sprite
-
-        # Increase ExpeditionShip health
-        self.max_health = 500.0
-        self.health = self.max_health
-
-        # 3 hangar slots for light ships
-        # True = interceptor in hangar (assigned & not currently deployed)
-        self.hangar = [False, False, False]
-        self.deployed = []                      # stores spawned Interceptor objects
-        self.hangar_ships = [None, None, None]  # fighters for each slot (after deploy)
-        self.last_selected_light_craft = None
-
-        # Persistent interceptor pool for fleet management (5 total for now)
-        if not hasattr(self, "interceptor_pool"):
-            self.interceptor_pool = [
-                {"id": i, "name": f"Interceptor {i+1}", "alive": True}
-                for i in range(5)
-            ]
-
-        # Which pool interceptor is assigned to each hangar slot (or None)
-        if not hasattr(self, "hangar_assignments"):
-            self.hangar_assignments = [None, None, None]
-            # Default: assign first interceptors to slots, up to 3
-            alive_ids = [e["id"] for e in self.interceptor_pool if e.get("alive", False)]
-            for slot in range(3):
-                if slot < len(alive_ids):
-                    self.hangar_assignments[slot] = alive_ids[slot]
-                    self.hangar[slot] = True
-                    
-    def can_deploy(self, slot):
-        return 0 <= slot < 3 and self.hangar[slot]
-
-    def deploy(self, slot):
-        """Spawn a light ship near the ExpeditionShip, behaving like a normal spaceship."""
-        if not self.can_deploy(slot):
-            return None
-
-        # Mark slot as used (no interceptor in hangar now – one is deployed)
-        self.hangar[slot] = False
-
-        # Determine which interceptor from the pool is assigned to this slot (if any)
-        interceptor_id = None
-        if hasattr(self, "hangar_assignments") and 0 <= slot < len(self.hangar_assignments):
-            interceptor_id = self.hangar_assignments[slot]
-
-        # Spawn slightly in front of the rectangle
-        offset = Vector2(70, 50).rotate(-self.angle)
-        icpt = Interceptor(self.pos + offset, interceptor_id=interceptor_id)
-        icpt.mover.angle = self.angle    # start facing same direction
-
-        # Remember which slot this light craft came from
-        icpt.hangar_slot = slot
-        icpt.recalling = False
-
-        self.deployed.append(icpt)
-        self.hangar_ships[slot] = icpt
-        return icpt
-
-
-class Frigate(SpaceUnit):
-    """Escort frigate for the ExpeditionShip."""
-
-    def shape_id(self):
-        return "friagate"
-
-    def __init__(self, start_pos, **kwargs):
-        # load frigate sprite
-        sprite = pygame.image.load("Images/Frigate.png").convert_alpha()
-
-        # rotate so it faces horizontally like the other ships
-        sprite = pygame.transform.rotate(sprite, -90)
-
-        # scale to of sprite
-        scaled_sprite = pygame.transform.smoothscale(
-            sprite,
-            (sprite.get_width() // 6, sprite.get_height() // 6)
-        )
-
-        # use sprite size for collisions / drawing
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
-        self.base_surf = scaled_sprite
-
-
-class Interceptor(SpaceUnit):
-    """Small deployable interceptor light craft."""
-
-    def shape_id(self):
-        return "interceptor"
-
-    def __init__(self, start_pos, interceptor_id=None, **kwargs):
-        # load interceptor sprite
-        sprite = pygame.image.load("Images/Interceptor.png").convert_alpha()
-        # rotate so it faces like the other ships (to the right at angle 0)
-        sprite = pygame.transform.rotate(sprite, -90)
-
-        # scale down (adjust factor if you want a different size)
-        scaled_sprite = pygame.transform.smoothscale(
-            sprite,
-            (sprite.get_width() // 24, sprite.get_height() // 24)
-        )
-
-        # use sprite size for collisions / drawing
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
-        self.base_surf = scaled_sprite
-
-        # id in the ExpeditionShip's interceptor pool (if any)
-        self.interceptor_id = interceptor_id
-
-        # recall state
-        self.recalling = False
-        self.hangar_slot = None

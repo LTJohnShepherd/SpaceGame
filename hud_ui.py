@@ -1,9 +1,9 @@
 import pygame
-from fleet_unit import Frigate
+from frigate import Frigate
 from ui import EXPEDITION_PREVIEW_IMG, FRIGATE_PREVIEW_IMG, INTERCEPTOR_PREVIEW_IMG, draw_triangle, draw_diamond, draw_hex
 
-class HangarUI:
-    """Manages hangar light craft previews and deploy/recall buttons for the main ship."""
+class HudUI:
+    """Manages the Hud UI in Gamescreen."""
 
     def __init__(self, font, preview_size=40):
         self.font = font
@@ -225,7 +225,6 @@ class HangarUI:
                 screen,
                 icpt_center,
                 preview_size * 1.2,
-                preview_size * 1.0,
                 (80, 255, 190),
                 2
             )

@@ -2,12 +2,12 @@ import pygame
 import sys
 from gameScreen import run_game
 from ui import Button
-
+from config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 
 def main():
    
     pygame.init() # Initialize all imported Pygame modules (must be called before using Pygame features)
-    WIDTH, HEIGHT = 1280, 720
+    WIDTH, HEIGHT = SCREEN_WIDTH, SCREEN_HEIGHT
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("SpaceGame - Main Menu")
 
@@ -56,7 +56,7 @@ def main():
         exit_button.draw(screen)
 
         pygame.display.flip() # Update the entire screen to show everything drawn in this frame
-        clock.tick(60)
+        clock.tick(FPS)
 
     pygame.quit()
     sys.exit()

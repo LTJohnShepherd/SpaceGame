@@ -1,6 +1,8 @@
 import sys
 import pygame
-from fleet_unit import ExpeditionShip, Frigate, Interceptor
+from expedition_ship import ExpeditionShip
+from frigate import Frigate
+from interceptor import Interceptor
 from ui import Button, EXPEDITION_PREVIEW_IMG, FRIGATE_PREVIEW_IMG, INTERCEPTOR_PREVIEW_IMG
 
 def fleet_management_screen(main_player: ExpeditionShip, player_fleet):

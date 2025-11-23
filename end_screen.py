@@ -4,9 +4,10 @@ import sys
 from ui import Button
 from gameScreen import run_game
 from main_menu import main as main_menu
+from config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 
 def end_screen():
-    WIDTH, HEIGHT = 1280, 720
+    WIDTH, HEIGHT = SCREEN_WIDTH, SCREEN_HEIGHT
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Game Over")
 
@@ -49,4 +50,4 @@ def end_screen():
         exit_btn.draw(screen)
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(FPS)

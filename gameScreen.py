@@ -1,15 +1,21 @@
 import pygame
 from pygame.math import Vector2
-from fleet_unit import SpaceUnit, PirateFrigate, ExpeditionShip, Frigate, Interceptor
+from fleet_unit import SpaceUnit
+from pirate_frigate import PirateFrigate
+from expedition_ship import ExpeditionShip
+from frigate import Frigate
+from interceptor import Interceptor
 from mover import Mover
 from projectile import Projectile
-from hangar_ui import HangarUI
+from hud_ui import HudUI
 from ui import Button, draw_triangle, draw_diamond, draw_hex
+from config import (
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    FPS,
+    SEPARATION_ITER,
+)
 import sys
-import math
-
-SEPARATION_ITER = 2  # How many times to push shapes apart when they overlap
-
 
 def draw_hex_button(surface, button, font, base_color, hover_color, header_text):
     rect = button.rect
@@ -29,7 +35,7 @@ def draw_hex_button(surface, button, font, base_color, hover_color, header_text)
 
 
 def run_game():
-    WIDTH, HEIGHT = 1280, 720
+    WIDTH, HEIGHT = SCREEN_WIDTH, SCREEN_HEIGHT
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("SpaceGame")
 
@@ -41,7 +47,7 @@ def run_game():
 
     # --- Hangar UI setup ---
     font = pygame.font.SysFont(None, 20)
-    hangar_interface = HangarUI(font)
+    hangar_interface = HudUI(font)
 
     # --- Fleet management button (top-left) ---
     fleet_btn_font = pygame.font.SysFont(None, 19)
@@ -68,7 +74,7 @@ def run_game():
     selection_rect = pygame.Rect(0, 0, 0, 0) # ExpeditionShip used to visually and logically represent the drag-selection area
 
     while True:
-        dt = clock.tick(60) / 1000.0
+        dt = clock.tick(FPS) / 1000.0
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -298,8 +304,7 @@ def run_game():
                     draw_triangle(
                         screen,
                         (spaceship.pos.x, spaceship.pos.y),
-                        ship_w * 1.2,   # Interceptor - relative to it's size
-                        ship_h * 1.0,
+                        ship_w * 1.2,   # Interceptor - relative to its size
                         (80, 255, 190),
                         2
                     )

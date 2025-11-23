@@ -1,5 +1,10 @@
 import pygame
 from pygame.math import Vector2
+from config import (
+    PROJECTILE_SPEED,
+    PROJECTILE_RADIUS,
+    PROJECTILE_LIFETIME,
+)
 
 class Projectile:
     # ---- Class-level defaults ----
@@ -7,10 +12,10 @@ class Projectile:
     מחלקה: Projectile
     תפקיד: ראה/י תיעוד הפונקציות והמאפיינים מטה. 
     """
-    SPEED = 600.0
-    RADIUS = 4
+    SPEED = PROJECTILE_SPEED
+    RADIUS = PROJECTILE_RADIUS
 
-    def __init__(self, pos, direction, *, speed=None, radius=None, damage=10.0, color=(255, 240, 120), lifetime=2.0, owner_is_enemy=False):
+    def __init__(self, pos, direction, *, speed=None, radius=None, damage=10.0, color=(255, 240, 120), lifetime=PROJECTILE_LIFETIME, owner_is_enemy=False):
         self.pos = Vector2(pos)
         self.direction = Vector2(direction)
         if self.direction.length_squared() == 0:

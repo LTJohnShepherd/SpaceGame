@@ -1,0 +1,38 @@
+import pygame
+from fleet_unit import SpaceUnit
+from config import (
+    PIRATE_DEFAULT_SPEED,
+    PIRATE_DEFAULT_ROT_SPEED,
+    PIRATE_DEFAULT_FIRE_RANGE,
+    PIRATE_DEFAULT_FIRE_COOLDOWN,
+    PIRATE_DEFAULT_BULLET_DAMAGE,
+)
+
+class PirateFrigate(SpaceUnit):
+    # ---- Enemy defaults ----
+    DEFAULT_COLOR = (220, 60, 60)
+    DEFAULT_SPEED = PIRATE_DEFAULT_SPEED
+    DEFAULT_ROT_SPEED = PIRATE_DEFAULT_ROT_SPEED
+    DEFAULT_FIRE_RANGE = PIRATE_DEFAULT_FIRE_RANGE
+    DEFAULT_FIRE_COOLDOWN = PIRATE_DEFAULT_FIRE_COOLDOWN
+    DEFAULT_BULLET_DAMAGE = PIRATE_DEFAULT_BULLET_DAMAGE
+
+    def shape_id(self):
+        return "pirate"
+
+    def __init__(self, start_pos, **kwargs):
+        # load pirate sprite
+        sprite = pygame.image.load("Images/PirateCruiser.png").convert_alpha()
+
+        # rotate so it faces to the right (like other ships)
+        sprite = pygame.transform.rotate(sprite, -90)
+
+        # scale it down (adjust divisor for size)
+        scaled_sprite = pygame.transform.smoothscale(
+            sprite,
+            (sprite.get_width() // 6, sprite.get_height() // 6)
+        )
+
+        # use sprite size for collisions / drawing
+        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
+        self.base_surf = scaled_sprite

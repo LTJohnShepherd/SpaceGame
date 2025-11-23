@@ -2,7 +2,7 @@
 import pygame
 import sys
 from ui import Button, INTERCEPTOR_PREVIEW_IMG
-from fleet_unit import Interceptor
+from interceptor import Interceptor
 
 def light_craft_selection_screen(main_player, slot_index: int):
     screen = pygame.display.get_surface()

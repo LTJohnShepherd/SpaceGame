@@ -45,8 +45,7 @@ FRIGATE_PREVIEW_IMG    = pygame.image.load("Previews/Frigate_Preview.png")
 INTERCEPTOR_PREVIEW_IMG = pygame.image.load("Previews/Interceptor_Preview.png")
 
 # ---------- Shape drawing helpers ----------
-def draw_triangle(surface, center, width, height, color, thickness=2):
-    size = width
+def draw_triangle(surface, center, size, color, thickness=2):
     cx, cy = int(center[0]), int(center[1])
 
     h = size * (3 ** 0.5) / 2  # height of an equilateral triangle
