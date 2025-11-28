@@ -4,12 +4,9 @@ Only important gameplay / tuning values are centralized here.
 Visual layout numbers and UI offsets stay close to their code.
 """
 
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
-IMAGES_DIR = ASSETS_DIR / "images"
-PREVIEWS_DIR = ASSETS_DIR / "previews"
+ASSETS_DIR = "spacegame/assets"
+IMAGES_DIR = "spacegame/assets/images"
+PREVIEWS_DIR = "spacegame/assets/previews"
 
 # ---- Window / timing ----
 SCREEN_WIDTH  = 1280

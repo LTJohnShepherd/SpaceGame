@@ -1,6 +1,6 @@
 import pygame
-from spacegame.units.frigate import Frigate
-from spacegame.ui.ui import EXPEDITION_PREVIEW_IMG, FRIGATE_PREVIEW_IMG, INTERCEPTOR_PREVIEW_IMG, draw_triangle, draw_diamond, draw_hex
+from spacegame.models.units.frigate import Frigate
+from spacegame.ui.ui import EXPEDITION_PREVIEW_IMG, FRIGATE_PREVIEW_IMG, INTERCEPTOR_PREVIEW_IMG, draw_triangle, draw_diamond, draw_hex, draw_health_bar
 
 class HudUI:
     """Manages the Hud UI in Gamescreen."""
@@ -117,20 +117,7 @@ class HudUI:
         bar_x = ms_x
         bar_y = ms_y + ms_h + pad
 
-        pct = 0.0
-        if main_player.max_health > 0:
-            pct = max(0.0, min(1.0, main_player.health / main_player.max_health))
-
-        bg_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
-        pygame.draw.rect(screen, (40, 40, 40), bg_rect, border_radius=3)
-
-        fill_w = int(bar_w * pct + 0.5)
-        if fill_w > 0:
-            fill_color = (50, 200, 70) if pct >= 0.5 else (220, 70, 70)
-            fill_rect = pygame.Rect(bar_x, bar_y, fill_w, bar_h)
-            pygame.draw.rect(screen, fill_color, fill_rect, border_radius=3)
-
-        pygame.draw.rect(screen, (10, 10, 10), bg_rect, 1, border_radius=3)
+        draw_health_bar(screen, bar_x, bar_y, bar_w, bar_h, main_player.health, main_player.max_health)
 
         # ---------------------------------------------------------
         # --- Frigate preview (sprite + diamond overlay) ---
@@ -171,20 +158,8 @@ class HudUI:
             bar_x = int(fr_x + (fr_w - bar_w) / 2)
             bar_y = fr_y + fr_h + pad
 
-            pct = 0.0
-            if frigate.max_health > 0:
-                pct = max(0.0, min(1.0, frigate.health / frigate.max_health))
+            draw_health_bar(screen, bar_x, bar_y, bar_w, bar_h, frigate.health, frigate.max_health)
 
-            bg_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
-            pygame.draw.rect(screen, (40, 40, 40), bg_rect, border_radius=3)
-
-            fill_w = int(bar_w * pct + 0.5)
-            if fill_w > 0:
-                fill_color = (50, 200, 70) if pct >= 0.5 else (220, 70, 70)
-                fill_rect = pygame.Rect(bar_x, bar_y, fill_w, bar_h)
-                pygame.draw.rect(screen, fill_color, fill_rect, border_radius=3)
-
-            pygame.draw.rect(screen, (10, 10, 10), bg_rect, 1, border_radius=3)
 
         # ---------------------------------------------------------
         # --- Draw hangar previews & deploy/recall buttons ---
@@ -241,19 +216,8 @@ class HudUI:
                 bar_x = preview_x
                 bar_y = preview_y + preview_size + pad
 
-                pct = fighter_ship.health / fighter_ship.max_health if fighter_ship.max_health > 0 else 0.0
-                pct = max(0.0, min(1.0, pct))
-                fill_w = int(bar_w * pct + 0.5)
+                draw_health_bar(screen, bar_x, bar_y, bar_w, bar_h, fighter_ship.health, fighter_ship.max_health)
 
-                bg_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
-                pygame.draw.rect(screen, (40, 40, 40), bg_rect, border_radius=3)
-
-                if fill_w > 0:
-                    fill_color = (50, 200, 70) if pct >= 0.5 else (220, 70, 70)
-                    fill_rect = pygame.Rect(bar_x, bar_y, fill_w, bar_h)
-                    pygame.draw.rect(screen, fill_color, fill_rect, border_radius=3)
-
-                pygame.draw.rect(screen, (10, 10, 10), bg_rect, 1, border_radius=3)
 
             # Draw deploy/recall button above preview if active
             if hangar_slot['show_button']:

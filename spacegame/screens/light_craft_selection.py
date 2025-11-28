@@ -1,8 +1,7 @@
-# light_craft_selection.py
 import pygame
 import sys
 from spacegame.ui.ui import Button, INTERCEPTOR_PREVIEW_IMG
-from spacegame.units.interceptor import Interceptor
+from spacegame.models.units.interceptor import Interceptor
 
 def light_craft_selection_screen(main_player, slot_index: int):
     screen = pygame.display.get_surface()
@@ -20,28 +19,8 @@ def light_craft_selection_screen(main_player, slot_index: int):
 
     back_btn = Button((10, 10, 100, 32), "Back", btn_font)
 
-    pool = getattr(main_player, "interceptor_pool", [])
-
-    # ---- compute which interceptors are currently READY (selected crafts) ----
-    selected_ids = set()
-    for i, assigned_id in enumerate(getattr(main_player, "hangar_assignments", [])):
-        if assigned_id is None:
-            continue
-        if i < len(main_player.hangar) and main_player.hangar[i]:
-            # Only those that are actually ready in hangar
-            for e in pool:
-                if e.get("id") == assigned_id and e.get("alive", False):
-                    selected_ids.add(assigned_id)
-                    break
-
-    alive_entries = [e for e in pool if e.get("alive", False)]
-
-    selected_items = [e for e in alive_entries if e["id"] in selected_ids]
-    stored_items   = [e for e in alive_entries if e["id"] not in selected_ids]
-
     # ---- helpers to modify assignments ----
     def clear_slot():
-        # Clears ONLY the slot that opened this screen
         if 0 <= slot_index < len(main_player.hangar_assignments):
             main_player.hangar_assignments[slot_index] = None
         if 0 <= slot_index < len(main_player.hangar):
@@ -78,29 +57,72 @@ def light_craft_selection_screen(main_player, slot_index: int):
             rects.append(pygame.Rect(x, y, BOX_W, BOX_H))
         return rects
 
+        # ---- tier helpers ----
+    ICON_BLUE = (70, 130, 220)
+    ICON_WHITE = (240, 240, 255)
+
+    def tier_to_roman(tier_value: int) -> str:
+        if tier_value <= 0:
+            return "0"
+        numerals = ["", "I", "II", "III"]
+        if tier_value < len(numerals):
+            return numerals[tier_value]
+        # fallback nums
+        return numerals[-1] + f"+{tier_value - (len(numerals) - 1)}"
+
+    def draw_tier_icon(surface, rect, tier_value):
+        """
+        Blue flag in the top-right corner.
+        Inside it – large centered roman numeral (no white inner box).
+        """
+
+        # make the font larger and clearer
+        large_tier_font = pygame.font.Font(None, 26)
+
+        # smaller, tighter flag
+        flag_w = 22
+        flag_h = 22
+        flag_rect = pygame.Rect(rect.right - flag_w - 1, rect.top + 1, flag_w, flag_h)
+
+        # draw blue box
+        pygame.draw.rect(surface, ICON_BLUE, flag_rect)
+
+        # convert tier to roman numerals
+        text = tier_to_roman(int(tier_value))
+
+        # render large, centered numeral
+        tier_text = large_tier_font.render(text, True, ICON_WHITE)
+
+        # clean perfect centering
+        tier_rect = tier_text.get_rect(center=flag_rect.center)
+
+        surface.blit(tier_text, tier_rect)
+
     # we will recompute rects every frame (simple)
     running = True
     while running:
-        
+
         # recompute alive/selected/stored every frame
-        pool = getattr(main_player, "interceptor_pool", [])
-        assignments = getattr(main_player, "hangar_assignments", [])
+        hangar = getattr(main_player, "hangar_system", None)
+        if hangar is not None:
+            alive_entries = hangar.alive_pool_entries()
+            selected_ids = hangar.selected_interceptor_ids()
+        else:
+            pool = getattr(main_player, "interceptor_pool", [])
+            assignments = getattr(main_player, "hangar_assignments", [])
+            alive_entries = [e for e in pool if e.get("alive", False)]
 
-        alive_entries = [e for e in pool if e.get("alive", False)]
+            selected_ids = set()
+            for assigned_id in assignments:
+                if assigned_id is None:
+                    continue
+                for e in alive_entries:
+                    if e.get("id") == assigned_id:
+                        selected_ids.add(assigned_id)
+                        break
 
-        # any alive interceptor that is assigned to ANY slot counts as "selected"
-        selected_ids = set()
-        for assigned_id in assignments:
-            if assigned_id is None:
-                continue
-            # check that this id exists and is alive
-            for e in alive_entries:
-                if e.get("id") == assigned_id:
-                    selected_ids.add(assigned_id)
-                    break
-
-        selected_items = [e for e in alive_entries if e["id"] in selected_ids]
-        stored_items   = [e for e in alive_entries if e["id"] not in selected_ids]
+        selected_items = [e for e in alive_entries if e.get("id") in selected_ids]
+        stored_items   = [e for e in alive_entries if e.get("id") not in selected_ids]
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -110,10 +132,8 @@ def light_craft_selection_screen(main_player, slot_index: int):
                 return
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # click handling after we know rects (computed below each frame)
                 mx, my = event.pos
 
-                # we recalc rects here too; safe & simple
                 selected_count = 1 + len(selected_items)   # 1 for "None"
                 top_selected_y = 130
                 selected_rects = layout_rects(selected_count, top_selected_y)
@@ -165,10 +185,10 @@ def light_craft_selection_screen(main_player, slot_index: int):
             none_rect = None
             selected_craft_rects = []
 
-        # draw "None" (first selected box)
+        # draw "None" (first selected box) – sharp corners
         if none_rect is not None:
-            pygame.draw.rect(screen, (30, 40, 70), none_rect, border_radius=10)
-            pygame.draw.rect(screen, (200, 80, 80), none_rect, 2, border_radius=10)
+            pygame.draw.rect(screen, (30, 40, 70), none_rect, border_radius=0)
+            pygame.draw.rect(screen, (200, 80, 80), none_rect, 2, border_radius=0)
 
             # circle with X, offset from left
             preview_x = none_rect.x + 40
@@ -189,15 +209,18 @@ def light_craft_selection_screen(main_player, slot_index: int):
             name = name_font.render("None", True, (230, 230, 255))
             screen.blit(name, (preview_x + 50, none_rect.y + 24))
 
-        # draw selected crafts (visual only, not clickable)
+        # draw selected crafts (visual only)
         for rect, entry in zip(selected_craft_rects, selected_items):
-            pygame.draw.rect(screen, (30, 40, 70), rect, border_radius=10)
-            pygame.draw.rect(screen, (180, 180, 220), rect, 2, border_radius=10)
+            pygame.draw.rect(screen, (30, 40, 70), rect, border_radius=0)
+            pygame.draw.rect(screen, ICON_BLUE, rect, 2, border_radius=0)  # border matches icon color
+
+            tier_value = entry.get("tier", 0)
+            draw_tier_icon(screen, rect, tier_value)
 
             preview_x = rect.x + 40
             preview_y = rect.y + rect.height // 2
 
-            # preview image instead of triangle
+            # preview image
             img = pygame.transform.smoothscale(INTERCEPTOR_PREVIEW_IMG, (48, 48))
             rect_img = img.get_rect(center=(preview_x, preview_y))
             screen.blit(img, rect_img.topleft)
@@ -222,13 +245,16 @@ def light_craft_selection_screen(main_player, slot_index: int):
         stored_rects = layout_rects(len(stored_items), stored_title_y + 40)
 
         for rect, entry in zip(stored_rects, stored_items):
-            pygame.draw.rect(screen, (30, 40, 70), rect, border_radius=10)
-            pygame.draw.rect(screen, (180, 180, 220), rect, 2, border_radius=10)
+            pygame.draw.rect(screen, (30, 40, 70), rect, border_radius=0)
+            pygame.draw.rect(screen, ICON_BLUE, rect, 2, border_radius=0)  # border matches icon color
+
+            tier_value = entry.get("tier", 0)
+            draw_tier_icon(screen, rect, tier_value)
 
             preview_x = rect.x + 40
             preview_y = rect.y + rect.height // 2
 
-            # preview image instead of triangle
+            # preview image
             img = pygame.transform.smoothscale(INTERCEPTOR_PREVIEW_IMG, (48, 48))
             rect_img = img.get_rect(center=(preview_x, preview_y))
             screen.blit(img, rect_img.topleft)

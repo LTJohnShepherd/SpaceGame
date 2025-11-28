@@ -27,6 +27,11 @@ class SpaceUnit(ABC):
         """Abstract marker so this class cannot be instantiated."""
         pass
 
+    @abstractmethod
+    def get_tier(self) -> int:
+        """Return this unit's tier."""
+        pass
+
     def __init__(self, start_pos, ship_size=(60, 30), *, color=None, speed=None,
                  rotation_speed=None, is_enemy=False, fire_range=None,
                  fire_cooldown=None, bullet_damage=None):

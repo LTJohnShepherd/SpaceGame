@@ -1,10 +1,10 @@
 import pygame
 from pygame.math import Vector2
-from spacegame.units.fleet_unit import SpaceUnit
-from spacegame.units.pirate_frigate import PirateFrigate
-from spacegame.units.expedition_ship import ExpeditionShip
-from spacegame.units.frigate import Frigate
-from spacegame.units.interceptor import Interceptor
+from spacegame.models.units.fleet_unit import SpaceUnit
+from spacegame.models.units.pirate_frigate import PirateFrigate
+from spacegame.models.units.expedition_ship import ExpeditionShip
+from spacegame.models.units.frigate import Frigate
+from spacegame.models.units.interceptor import Interceptor
 from spacegame.core.mover import Mover
 from spacegame.core.projectile import Projectile
 from spacegame.ui.hud_ui import HudUI
@@ -16,6 +16,62 @@ from spacegame.config import (
     SEPARATION_ITER,
     IMAGES_DIR,
 )
+
+
+def update_projectiles(projectiles, player_fleet, enemy_fleet, dt):
+    """Update projectiles and apply hit damage, returning the filtered list."""
+    for b in projectiles:
+        b.update(dt)
+        if not getattr(b, "is_active", False):
+            continue
+        if getattr(b, "owner_is_enemy", False):
+            hit = None
+            for p in player_fleet:
+                if b.collides_with_shape(p):
+                    hit = p
+                    break
+            if hit is not None:
+                hit.take_damage(b.damage)
+                b.is_active = False
+        else:
+            hit = None
+            for e in enemy_fleet:
+                if b.collides_with_shape(e):
+                    hit = e
+                    break
+            if hit is not None:
+                hit.take_damage(b.damage)
+                b.is_active = False
+
+    return [b for b in projectiles if getattr(b, "is_active", False)]
+
+
+def handle_collisions(player_fleet, enemy_fleet, dt):
+    """Handle separation and collision damage between ships."""
+    # Separation: keep ships from overlapping too much
+    for _ in range(SEPARATION_ITER):
+        # Player-player separation:
+        # - Light crafts still push other Light crafts.
+        # - Light crafts do NOT push the main ship (or any non-triangle player spaceship).
+        for i, a in enumerate(player_fleet):
+            for b in player_fleet[i + 1:]:
+                if isinstance(a, Interceptor) and isinstance(b, Interceptor):
+                    Mover.separate_rotated(a, b)
+                elif not isinstance(a, Interceptor) and not isinstance(b, Interceptor):
+                    Mover.separate_rotated(a, b)
+        # Enemy-enemy separation unchanged.
+        for i, a in enumerate(enemy_fleet):
+            for b in enemy_fleet[i + 1:]:
+                Mover.separate_rotated(a, b)
+
+    # Player-enemy collision damage still applies, but Light crafts do not push enemies.
+    for p in player_fleet:
+        for e in enemy_fleet:
+            if p.collides_with(e):
+                dmg = SpaceUnit.COLLISION_DPS * dt
+                p.take_damage(dmg)
+                e.take_damage(dmg)
+
 import sys
 
 def draw_hex_button(surface, button, font, base_color, hover_color, header_text):
@@ -41,7 +97,7 @@ def run_game():
     pygame.display.set_caption("SpaceGame")
 
     # --- Load skybox background ---
-    background_img = pygame.image.load(IMAGES_DIR / "Skybox.png").convert()
+    background_img = pygame.image.load(IMAGES_DIR + "/Skybox.png").convert()
     background_img = pygame.transform.smoothscale(background_img, (WIDTH, HEIGHT))
 
     clock = pygame.time.Clock()
@@ -76,7 +132,10 @@ def run_game():
 
     while True:
         dt = clock.tick(FPS) / 1000.0
-
+        # Ignore huge dt spikes (e.g. when coming back from INTERNAL screen)
+        if dt > 0.3:      # threshold in seconds, tweak if you want
+            dt = 0.0      # treat that frame as “paused”
+            
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -86,8 +145,12 @@ def run_game():
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 # First: fleet management button
                 if fleet_btn.handle_event(event):
-                    from spacegame.screens.fleet_management import fleet_management_screen
-                    fleet_management_screen(main_player, player_fleet)
+                    from spacegame.screens.internal_screen import internal_screen
+                    res = internal_screen(main_player, player_fleet)
+                    if res == "to_game":
+                        # Orange X from any internal screen chain: already back in game.
+                        # Treat as a fresh slate; no extra action needed.
+                        pass
                     # after returning, skip further handling of this click
                     continue
 
@@ -154,18 +217,13 @@ def run_game():
                     recalled_done.append(spaceship)
 
         for icpt in recalled_done:
-            # Remove from active shapes
+            # Remove from active shapes; Hangar will take care of internal lists.
             if icpt in player_fleet:
                 player_fleet.remove(icpt)
-            if icpt in main_player.deployed:
-                main_player.deployed.remove(icpt)
 
-            slot = getattr(icpt, "hangar_slot", None)
-            if slot is not None and 0 <= slot < len(main_player.hangar):
-                # Make slot available again
-                main_player.hangar[slot] = True
-                main_player.hangar_ships[slot] = None
-
+            # Inform the Hangar that this interceptor has successfully docked
+            # so the corresponding slot becomes ready again.
+            main_player.hangar_system.on_recalled(icpt)
         # Enemies: approach to within range, then hold
         for e in enemy_fleet:
             if player_fleet:
@@ -196,53 +254,19 @@ def run_game():
                 projectiles.append(Projectile(e.pos, dirv, damage=e.bullet_damage, color=(255,120,120), owner_is_enemy=True, speed=Projectile.SPEED*0.9))
                 e.reset_cooldown()
 
-        # --- Update projectiles & handle hits ---
-        for b in projectiles:
-            b.update(dt)
-            if not b.is_active:
-                continue
-            if b.owner_is_enemy:
-                hit = None
-                for p in player_fleet:
-                    if b.collides_with_shape(p):
-                        hit = p
-                        break
-                if hit:
-                    hit.take_damage(b.damage)
-                    b.is_active = False
-            else:
-                hit = None
-                for e in enemy_fleet:
-                    if b.collides_with_shape(e):
-                        hit = e
-                        break
-                if hit:
-                    hit.take_damage(b.damage)
-                    b.is_active = False
+                # --- Update projectiles & handle hits ---
+        projectiles = update_projectiles(projectiles, player_fleet, enemy_fleet, dt)
 
-        # Cleanup
-        projectiles = [b for b in projectiles if b.is_active]
 
-        # Update interceptor pool for any interceptors that died this frame
+
+        # Update hangar state for any interceptors that died this frame
         dead_interceptors = [
             s for s in player_fleet
             if isinstance(s, Interceptor) and s.health <= 0.0
         ]
         for icpt in dead_interceptors:
-            interceptor_id = getattr(icpt, "interceptor_id", None)
-            if interceptor_id is not None and hasattr(main_player, "interceptor_pool"):
-                for entry in main_player.interceptor_pool:
-                    if entry.get("id") == interceptor_id:
-                        entry["alive"] = False
-                        break
-
-            slot = getattr(icpt, "hangar_slot", None)
-            if slot is not None and 0 <= slot < len(main_player.hangar):
-                # this slot now has no interceptor (it died)
-                main_player.hangar[slot] = False
-                main_player.hangar_ships[slot] = None
-                if hasattr(main_player, "hangar_assignments"):
-                    main_player.hangar_assignments[slot] = None
+            # Notify Hangar so it can mark the pool entry dead and clear any slot / assignment.
+            main_player.hangar_system.on_interceptor_dead(icpt)
 
         enemy_fleet = [s for s in enemy_fleet if s.health > 0.0]
         player_fleet = [s for s in player_fleet if s.health > 0.0]
@@ -254,33 +278,9 @@ def run_game():
             return
 
         # --- Collisions (residual): small damage from touching using class-level DPS ---
-        for _ in range(SEPARATION_ITER):
-            # Player-player separation:
-            # - Light crafts still push other Light crafts.
-            # - Light crafts do NOT push the main ship (or any non-triangle player spaceship).
-            for i, a in enumerate(player_fleet):
-                for b in player_fleet[i + 1:]:
-                    if isinstance(a, Interceptor) and isinstance(b, Interceptor):
-                        Mover.separate_rotated(a, b)
-                    elif not isinstance(a, Interceptor) and not isinstance(b, Interceptor):
-                        Mover.separate_rotated(a, b)
-            # Enemy-enemy separation unchanged.
-            for i, a in enumerate(enemy_fleet):
-                for b in enemy_fleet[i + 1:]:
-                    Mover.separate_rotated(a, b)
+        handle_collisions(player_fleet, enemy_fleet, dt)
 
-        # Player-enemy collision damage still applies, but Light crafts do not push enemies.
-        for p in player_fleet:
-            for e in enemy_fleet:
-                if p.collides_with(e):
-                    dmg = SpaceUnit.COLLISION_DPS * dt
-                    p.take_damage(dmg)
-                    e.take_damage(dmg)
-                    if not isinstance(p, Interceptor):
-                        for _ in range(SEPARATION_ITER):
-                            Mover.separate_rotated(p, e)
-
-        # --- Draw ---
+# --- Draw ---
         screen.blit(background_img, (0, 0))
         for spaceship in player_fleet:
             spaceship.draw(screen, show_range=spaceship.selected)

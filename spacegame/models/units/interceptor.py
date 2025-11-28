@@ -1,5 +1,5 @@
 import pygame
-from spacegame.units.fleet_unit import SpaceUnit
+from spacegame.models.units.fleet_unit import SpaceUnit
 from spacegame.config import IMAGES_DIR
 
 class Interceptor(SpaceUnit):
@@ -7,10 +7,16 @@ class Interceptor(SpaceUnit):
 
     def shape_id(self):
         return "interceptor"
+    
+    def get_tier(self) -> int:
+        # tier is stored per ship instance; default 0 like other ships.
+        return getattr(self, "tier", 0)
 
-    def __init__(self, start_pos, interceptor_id=None, **kwargs):
+    def __init__(self, start_pos, interceptor_id=None, tier: int = 0, **kwargs):
+        # per-ship tier value
+        self.tier = tier
         # load interceptor sprite
-        sprite = pygame.image.load(IMAGES_DIR / "Interceptor.png").convert_alpha()
+        sprite = pygame.image.load(IMAGES_DIR + "/Interceptor.png").convert_alpha()
         # rotate so it faces like the other ships (to the right at angle 0)
         sprite = pygame.transform.rotate(sprite, -90)
 

@@ -41,9 +41,9 @@ class Button:
 
 # ---------- Shared preview images ----------
 # Centralized here so multiple screens can reuse the same loaded surfaces.
-EXPEDITION_PREVIEW_IMG = pygame.image.load(PREVIEWS_DIR / "Carrier_T1_Preview.png")
-FRIGATE_PREVIEW_IMG    = pygame.image.load(PREVIEWS_DIR / "Frigate_Preview.png")
-INTERCEPTOR_PREVIEW_IMG = pygame.image.load(PREVIEWS_DIR / "Interceptor_Preview.png")
+EXPEDITION_PREVIEW_IMG = pygame.image.load(PREVIEWS_DIR + "/Carrier_T1_Preview.png")
+FRIGATE_PREVIEW_IMG    = pygame.image.load(PREVIEWS_DIR + "/Frigate_Preview.png")
+INTERCEPTOR_PREVIEW_IMG = pygame.image.load(PREVIEWS_DIR + "/Interceptor_Preview.png")
 
 # ---------- Shape drawing helpers ----------
 def draw_triangle(surface, center, size, color, thickness=2):
@@ -86,3 +86,20 @@ def draw_hex(surface, center, width, height, color, thickness=2):
     ]
     pygame.draw.polygon(surface, color, points, thickness)
 
+def draw_health_bar(surface, x, y, w, h, value, max_value):
+    """Draw a small rectangular health bar on the given surface."""
+    if max_value <= 0:
+        return
+
+    pct = max(0.0, min(1.0, float(value) / float(max_value)))
+
+    bg_rect = pygame.Rect(x, y, w, h)
+    pygame.draw.rect(surface, (40, 40, 40), bg_rect, border_radius=3)
+
+    fill_w = int(w * pct + 0.5)
+    if fill_w > 0:
+        fill_color = (50, 200, 70) if pct >= 0.5 else (220, 70, 70)
+        fill_rect = pygame.Rect(x, y, fill_w, h)
+        pygame.draw.rect(surface, fill_color, fill_rect, border_radius=3)
+
+    pygame.draw.rect(surface, (10, 10, 10), bg_rect, 1, border_radius=3)
