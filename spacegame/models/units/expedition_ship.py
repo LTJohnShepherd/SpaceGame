@@ -59,36 +59,40 @@ class ExpeditionShip(SpaceUnit):
         # Remember the last selected light craft for convenience in input handling.
         self.last_selected_light_craft = None
     def can_deploy(self, slot):
-        return 0 <= slot < HANGAR_SLOT_COUNT and self.hangar[slot]
+        """Return True if the given slot currently has a ready interceptor in hangar."""
+        # Delegate to the Hangar system; it owns slot readiness logic.
+        return self.hangar_system.can_deploy(slot)
 
     def deploy(self, slot):
-        """Spawn a light Interceptor from the given hangar slot near the ExpeditionShip."""
+        """Deploy an interceptor from the given hangar slot, if available.
+
+        The actual Interceptor object is spawned in front of the mothership and
+        added to the active fleet externally; this method just constructs it and
+        updates the Hangar's state.
+        """
         if not self.can_deploy(slot):
             return None
 
+        hangar = self.hangar_system
+
         # Determine which interceptor from the persistent pool is assigned to this slot (if any)
         interceptor_id = None
-        if hasattr(self, "hangar_assignments") and 0 <= slot < len(self.hangar_assignments):
-            interceptor_id = self.hangar_assignments[slot]
+        if 0 <= slot < len(hangar.assignments):
+            interceptor_id = hangar.assignments[slot]
 
-        # Spawn slightly in front of the rectangle
+        # Spawn slightly in front of the rectangle (relative to current facing)
         offset = Vector2(70, 50).rotate(-self.angle)
 
         # Look up this interceptor's tier from the Hangar pool data (per-ship).
         tier_value = 0
         if interceptor_id is not None:
-            for entry in self.interceptor_pool:
-                if entry.get("id") == interceptor_id:
-                    tier_value = entry.get("tier", 0)
-                    break
+            entry = hangar.get_entry_by_id(interceptor_id)
+            if entry is not None and entry.alive:
+                tier_value = entry.tier
 
         icpt = Interceptor(self.pos + offset, interceptor_id=interceptor_id, tier=tier_value)
 
-        # Remember which slot this light craft came from for recall / docking logic.
-        icpt.hangar_slot = slot
-        icpt.recalling = False
-
         # Notify Hangar that an interceptor was deployed so it can update slots / bookkeeping.
-        self.hangar_system.on_deployed(slot, icpt)
+        hangar.on_deployed(slot, icpt)
 
         return icpt

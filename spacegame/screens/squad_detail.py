@@ -1,45 +1,28 @@
 import sys
 import pygame
+from spacegame.ui.fleet_management_ui import (
+    draw_tier_icon,
+    draw_fleet_section_titles,
+    compute_fleet_preview_layout,
+)
+
 from pygame.math import Vector2
-from spacegame.ui.ui import Button, INTERCEPTOR_PREVIEW_IMG, draw_triangle
-from spacegame.models.units.interceptor import Interceptor
+from spacegame.ui.ui import INTERCEPTOR_PREVIEW_IMG, draw_triangle
 from spacegame.models.units.frigate import Frigate
-from spacegame.config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
+from spacegame.config import (
+    SCREEN_WIDTH, 
+    SCREEN_HEIGHT, 
+    UI_BG_COLOR, 
+    UI_NAV_LINE_COLOR, 
+    UI_TITLE_COLOR, 
+    UI_SECTION_TEXT_COLOR,
+    UI_TOP_BAR_HEIGHT,
+    UI_TAB_HEIGHT,
+    UI_TAB_TEXT_SELECTED
+    )
 
 
 # ---- Tier icon helpers (same style as in light_craft_selection) ----
-ICON_BLUE = (70, 130, 220)
-ICON_WHITE = (240, 240, 255)
-
-
-def tier_to_roman(tier_value: int) -> str:
-    if tier_value <= 0:
-        return "0"
-    numerals = ["", "I", "II", "III"]
-    if tier_value < len(numerals):
-        return numerals[tier_value]
-    return numerals[-1] + f"+{tier_value - (len(numerals) - 1)}"
-
-
-def draw_tier_icon(surface: pygame.Surface, host_rect: pygame.Rect, tier_value: int) -> None:
-    """
-    Blue flag in the top-right corner of host_rect.
-    Inside it – large centered roman numeral.
-    """
-    large_tier_font = pygame.font.Font(None, 26)
-
-    flag_w = 22
-    flag_h = 22
-    flag_rect = pygame.Rect(host_rect.right - flag_w - 1, host_rect.top + 1, flag_w, flag_h)
-
-    pygame.draw.rect(surface, ICON_BLUE, flag_rect)
-
-    text = tier_to_roman(int(tier_value))
-    tier_text = large_tier_font.render(text, True, ICON_WHITE)
-    tier_text_rect = tier_text.get_rect(center=flag_rect.center)
-    surface.blit(tier_text, tier_text_rect)
-
-
 def _compute_squad_stats(is_equipped: bool):
     if not is_equipped:
         return {
@@ -74,10 +57,10 @@ def _gather_slot_info(main_player, player_fleet, slot_index: int):
     assigned_id = hangar.assignments[slot_index]
     is_equipped = assigned_id is not None
 
-    entry = None  # noqa
+    entry = None
     if is_equipped:
         for e in hangar.pool:
-            if e.get("id") == assigned_id and e.get("alive", False):
+            if e.id == assigned_id and e.alive:
                 entry = e
                 break
         if entry is None:
@@ -95,9 +78,9 @@ def _gather_slot_info(main_player, player_fleet, slot_index: int):
             "stats": _compute_squad_stats(False),
         }
 
-    name = entry.get("name", "Interceptor Squadron")
-    rarity = entry.get("rarity", "COMMON")
-    tier = int(entry.get("tier", 0))
+    name = getattr(entry, "name", "Interceptor Squadron")
+    rarity = getattr(entry, "rarity", "COMMON")
+    tier = int(getattr(entry, "tier", 0))
 
     ready_ships = 1 if hangar.slots[slot_index] else 0
     max_ships = 1
@@ -122,22 +105,15 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
     if screen is None:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
-    clock = pygame.time.Clock()
     width, height = screen.get_size()
 
     # ---------- COLORS ----------
-    BG_COLOR = (4, 18, 35)
-    NAV_LINE_COLOR = (35, 80, 120)
-    TITLE_COLOR = (185, 210, 235)
-    NAV_BG_COLOR = (10, 40, 70)
-
     CARD_BG = (12, 26, 50)
     STAT_LABEL = (160, 185, 210)
-    STAT_VALUE = (230, 240, 255)
 
     BUTTON_BASE = (28, 80, 135)
     BUTTON_HOVER = (40, 110, 185)
-    BUTTON_TEXT = TITLE_COLOR
+    BUTTON_TEXT = UI_TITLE_COLOR
     BUTTON_DISABLED_BG = (40, 50, 70)
     BUTTON_DISABLED_TEXT = (110, 120, 140)
 
@@ -145,7 +121,7 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
     READY_FILLED = (120, 220, 255)
     READY_EMPTY = (60, 90, 130)
 
-    REMOVE_X_COLOR = TITLE_COLOR
+    REMOVE_X_COLOR = UI_TITLE_COLOR
     REMOVE_X_DISABLED = (90, 110, 140)
 
     # ---------- FONTS ----------
@@ -157,19 +133,15 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
     officer_font = pygame.font.Font(None, 24)
     button_font = pygame.font.Font(None, 28)
 
-    # ---------- TOP BAR / NAV ----------
-    TOP_BAR_HEIGHT = 96
-    TAB_HEIGHT = 38
-
     title_text = "FLEET CONFIGURATION"
-    title_surf = title_font.render(title_text, True, TITLE_COLOR)
-    title_rect = title_surf.get_rect(center=(width // 2, TOP_BAR_HEIGHT // 2 - 22))
+    title_surf = title_font.render(title_text, True, UI_TITLE_COLOR)
+    title_rect = title_surf.get_rect(center=(width // 2, UI_TOP_BAR_HEIGHT // 2 - 22))
 
-    tabs_y = TOP_BAR_HEIGHT - TAB_HEIGHT - 4
+    tabs_y = UI_TOP_BAR_HEIGHT - UI_TAB_HEIGHT - 4
     nav_top_y = tabs_y - 6
-    nav_bottom_y = tabs_y + TAB_HEIGHT + 6
+    nav_bottom_y = tabs_y + UI_TAB_HEIGHT + 6
 
-    nav_center_y = TOP_BAR_HEIGHT // 1.3
+    nav_center_y = UI_TOP_BAR_HEIGHT // 1.3
 
     arrow_size = 32
     back_arrow_rect = pygame.Rect(0, 0, arrow_size, arrow_size)
@@ -179,41 +151,15 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
     close_font = pygame.font.Font(None, 40)
     close_surf = close_font.render("X", True, (255, 160, 0))
     close_rect = close_surf.get_rect()
-    close_rect.center = (width - 40, TOP_BAR_HEIGHT // 1.25)
+    close_rect.center = (width - 40, UI_TOP_BAR_HEIGHT // 1.25)
     close_hit_rect = close_rect.inflate(20, 20)
-
-    # ---------- LAYOUT CONSTANTS (from fleet_management) ----------
-    ROW_CENTER_Y = height // 2
-    COLUMN_SPACING_X = width // 3
-
-    center_x = width // 2
-    left_center_x = center_x - COLUMN_SPACING_X
-    mid_center_x = center_x
-    right_center_x = center_x + COLUMN_SPACING_X
-
-    ms_w, ms_h = 170, 160
-    ms_rect = pygame.Rect(0, 0, ms_w, ms_h)
-    SHIP_OFFSET_X = 40
-    ms_rect.center = (left_center_x + SHIP_OFFSET_X, ROW_CENTER_Y)
-
-    circle_radius = 30
-    circle_spacing = 120
-    circle_col_x = mid_center_x
-    circle_top_y = ROW_CENTER_Y - circle_spacing
-    circle_rects = []
-    for i in range(3):
-        cx = circle_col_x
-        cy = circle_top_y + i * circle_spacing
-        rect = pygame.Rect(0, 0, circle_radius * 2, circle_radius * 2)
-        rect.center = (cx, cy)
-        circle_rects.append(rect)
-
-    fr_w, fr_h = 140, 70
-    fr_rect = pygame.Rect(0, 0, fr_w, fr_h)
-    fr_rect.center = (right_center_x, ROW_CENTER_Y)
-
-    previews_top = min(ms_rect.top, circle_rects[0].top, fr_rect.top)
-
+    
+    # ---------- LAYOUT CONSTANTS (from fleet_management, shared) ----------
+    fleet_layout = compute_fleet_preview_layout(width, height)
+    left_center_x = fleet_layout["left_center_x"]
+    mid_center_x = fleet_layout["mid_center_x"]
+    fr_rect = fleet_layout["fr_rect"]
+    previews_top = fleet_layout["previews_top"]
     # ---------- LEFT CARD LAYOUT ----------
     card_margin_x = 40
     card_top = nav_bottom_y + 24
@@ -241,8 +187,6 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
 
     running = True
     while running:
-        dt = clock.tick(FPS) / 1000.0  # noqa: F841
-
         slot_info = _gather_slot_info(main_player, player_fleet, slot_index)
         is_equipped = slot_info["is_equipped"]
         stats = slot_info["stats"]
@@ -310,17 +254,23 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
                         light_craft_selection_screen,
                     )
 
-                    light_craft_selection_screen(main_player, slot_index)
+                    res = light_craft_selection_screen(main_player, player_fleet, slot_index)
+                    if res == "to_game":
+                        return "to_game"
                     continue
 
+
                 # CHANGE: only when equipped and not deployed
-                if is_equipped and (not is_deployed) and change_rect.collidepoint(mx, my):
+                if (not is_deployed) and change_rect.collidepoint(mx, my):
                     from spacegame.screens.light_craft_selection import (
                         light_craft_selection_screen,
                     )
 
-                    light_craft_selection_screen(main_player, slot_index)
+                    res = light_craft_selection_screen(main_player, player_fleet, slot_index)
+                    if res == "to_game":
+                        return "to_game"
                     continue
+
 
                 # --- slot-circle click handling: change viewed slot ---
                 slot_clicked = False
@@ -334,23 +284,12 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
                     continue  # re-enter loop with new slot_index
 
         # ---------- DRAW ----------
-        screen.fill(BG_COLOR)
-
-        # top nav band
-        pygame.draw.rect(
-            screen,
-            NAV_BG_COLOR,
-            (0, nav_top_y, width, nav_bottom_y - nav_top_y),
-        )
-        pygame.draw.line(screen, NAV_LINE_COLOR, (0, nav_top_y), (width, nav_top_y), 1)
-        pygame.draw.line(
-            screen, NAV_LINE_COLOR, (0, nav_bottom_y), (width, nav_bottom_y), 1
-        )
+        screen.fill(UI_BG_COLOR)
 
         # title + back / close
         screen.blit(title_surf, title_rect)
 
-        arrow_color = (255, 255, 255)
+        arrow_color = UI_TAB_TEXT_SELECTED
         arrow_points = [
             (back_arrow_rect.left, back_arrow_rect.centery),
             (back_arrow_rect.right, back_arrow_rect.top),
@@ -360,111 +299,43 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
         screen.blit(close_surf, close_rect)
 
         # -------- Section titles + lines (CURRENT LOADOUT / SQUADS / ESCORTS) --------
-        fleet_title_bottom = title_rect.bottom
-        label_height = label_font.size("M")[1]
-        labels_y = fleet_title_bottom + (
-            previews_top - fleet_title_bottom - label_height
-        ) // 7.1
-
-        line_margin = int(label_height * 15 / 19.5)
-
-        # LEFT: CURRENT LOADOUT
-        current_surf = label_font.render("CURRENT LOADOUT", True, NAV_LINE_COLOR)
-        current_rect = current_surf.get_rect()
-        current_rect.centerx = left_center_x
-        current_rect.y = labels_y
-
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (current_rect.left, current_rect.top - line_margin),
-            (current_rect.right * 1.4, current_rect.top - line_margin),
-            1,
-        )
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (current_rect.left, current_rect.bottom + line_margin),
-            (current_rect.right * 1.4, current_rect.bottom + line_margin),
-            1,
-        )
-        screen.blit(current_surf, current_rect)
-
-        # MIDDLE: SQUADS
         total_slots = len(main_player.hangar_assignments)
         equipped_slots = sum(1 for a in main_player.hangar_assignments if a is not None)
-        squads_text = (
-            f"SQUADS: {equipped_slots} / {total_slots}"
-            if total_slots > 0
-            else "SQUADS: 0 / 0"
-        )
-        squads_surf = label_font.render(squads_text, True, TITLE_COLOR)
-        squads_rect = squads_surf.get_rect()
-        squads_rect.centerx = circle_col_x / 1.2
-        squads_rect.y = labels_y
-
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (squads_rect.left, squads_rect.top - line_margin),
-            (squads_rect.right * 1.45, squads_rect.top - line_margin),
-            1,
-        )
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (squads_rect.left, squads_rect.bottom + line_margin),
-            (squads_rect.right * 1.45, squads_rect.bottom + line_margin),
-            1,
-        )
-        screen.blit(squads_surf, squads_rect)
-
-        # RIGHT: ESCORTS
         frigates = [s for s in player_fleet if isinstance(s, Frigate)]
         alive_frigates = [f for f in frigates if getattr(f, "health", 0) > 0]
-        if frigates:
-            escorts_text = f"ESCORTS: {len(alive_frigates)} / {len(frigates)}"
-        else:
-            escorts_text = "ESCORTS: 0 / 0"
-
-        escorts_surf = label_font.render(escorts_text, True, TITLE_COLOR)
-        escorts_rect = escorts_surf.get_rect()
-        escorts_rect.centerx = fr_rect.centerx / 1.1
-        escorts_rect.y = labels_y
-
-        pygame.draw.line(
+        draw_fleet_section_titles(
             screen,
-            NAV_LINE_COLOR,
-            (escorts_rect.left, escorts_rect.top - line_margin),
-            (escorts_rect.right * 1.14, escorts_rect.top - line_margin),
-            1,
+            title_rect,
+            label_font,
+            UI_TITLE_COLOR,
+            UI_NAV_LINE_COLOR,
+            previews_top,
+            left_center_x,
+            mid_center_x,
+            fr_rect.centerx,
+            total_slots,
+            equipped_slots,
+            len(frigates),
+            len(alive_frigates),
         )
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (escorts_rect.left, escorts_rect.bottom + line_margin),
-            (escorts_rect.right * 1.14, escorts_rect.bottom + line_margin),
-            1,
-        )
-        screen.blit(escorts_surf, escorts_rect)
 
         # -------- LEFT CARD --------
         pygame.draw.rect(screen, CARD_BG, card_rect)  # no border
 
         # top row: DETAILS + rarity
-        details_surf = small_header_font.render("DETAILS", True, TITLE_COLOR)
+        details_surf = small_header_font.render("DETAILS", True, UI_TITLE_COLOR)
         details_rect = details_surf.get_rect()
         details_rect.topleft = (card_rect.left + 24, card_rect.top + 10)
         screen.blit(details_surf, details_rect)
 
         rarity_text = slot_info["rarity"].upper()
-        rarity_surf = small_header_font.render(rarity_text, True, TITLE_COLOR)
+        rarity_surf = small_header_font.render(rarity_text, True, UI_TITLE_COLOR)
         rarity_rect = rarity_surf.get_rect()
         rarity_rect.topright = (card_rect.right - 24, card_rect.top + 10)
         screen.blit(rarity_surf, rarity_rect)
 
         # big squad name
-        name_surf = name_font.render(slot_info["name"].upper(), True, STAT_VALUE)
+        name_surf = name_font.render(slot_info["name"].upper(), True, UI_SECTION_TEXT_COLOR)
         name_rect = name_surf.get_rect()
         name_rect.topleft = (card_rect.left + 24, card_rect.top + 42)
         screen.blit(name_surf, name_rect)
@@ -483,7 +354,7 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
         for i, (label_text, value_text) in enumerate(stat_rows):
             y = stats_top + i * row_h
             lbl = stat_font.render(label_text, True, STAT_LABEL)
-            val = stat_font.render(value_text, True, STAT_VALUE)
+            val = stat_font.render(value_text, True, UI_SECTION_TEXT_COLOR)
 
             screen.blit(lbl, (card_rect.left + 24, y))
             val_rect = val.get_rect()
@@ -493,7 +364,7 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
             line_y = y + stat_font.get_height() + 2
             pygame.draw.line(
                 screen,
-                NAV_LINE_COLOR,
+                UI_NAV_LINE_COLOR,
                 (line_left, line_y),
                 (line_right, line_y),
                 1,
@@ -509,28 +380,28 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
         )
 
         pygame.draw.rect(screen, CARD_BG, officer_box_rect)  # flat square
-        pygame.draw.rect(screen, TITLE_COLOR, officer_box_rect, 2)
+        pygame.draw.rect(screen, UI_TITLE_COLOR, officer_box_rect, 2)
 
         ocx, ocy = officer_box_rect.center
         inner_radius = int(officer_box_size / 2.8)
-        pygame.draw.circle(screen, TITLE_COLOR, (ocx, ocy), inner_radius, 2)
+        pygame.draw.circle(screen, UI_TITLE_COLOR, (ocx, ocy), inner_radius, 2)
 
         plus_size = 14  # keep plus size fixed
         pygame.draw.line(
-            screen, TITLE_COLOR, (ocx - plus_size, ocy), (ocx + plus_size, ocy), 2
+            screen, UI_TITLE_COLOR, (ocx - plus_size, ocy), (ocx + plus_size, ocy), 2
         )
         pygame.draw.line(
-            screen, TITLE_COLOR, (ocx, ocy - plus_size), (ocx, ocy + plus_size), 2
+            screen, UI_TITLE_COLOR, (ocx, ocy - plus_size), (ocx, ocy + plus_size), 2
         )
 
-        officer_lbl = officer_font.render("ASSIGN OFFICER", True, STAT_VALUE)
+        officer_lbl = officer_font.render("ASSIGN OFFICER", True, UI_SECTION_TEXT_COLOR)
         officer_lbl_rect = officer_lbl.get_rect()
         officer_lbl_rect.midleft = (officer_box_rect.right + 18, ocy)
         screen.blit(officer_lbl, officer_lbl_rect)
 
         # CHANGE button (sharp edges), disabled if not equipped or deployed
         mx, my = pygame.mouse.get_pos()
-        change_enabled = is_equipped and (not is_deployed)
+        change_enabled = (not is_deployed)
         if change_enabled:
             hovered_change = change_rect.collidepoint(mx, my)
             change_color = BUTTON_HOVER if hovered_change else BUTTON_BASE

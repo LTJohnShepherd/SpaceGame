@@ -1,5 +1,9 @@
 import sys
 import pygame
+from spacegame.ui.fleet_management_ui import (
+    draw_fleet_section_titles,
+    compute_fleet_preview_layout,
+)
 from spacegame.models.units.expedition_ship import ExpeditionShip
 from spacegame.models.units.frigate import Frigate
 from spacegame.ui.ui import (
@@ -8,11 +12,44 @@ from spacegame.ui.ui import (
     INTERCEPTOR_PREVIEW_IMG,
     draw_health_bar,
 )
+from spacegame.config import (
+    FPS,
+    UI_BG_COLOR, 
+    UI_NAV_LINE_COLOR, 
+    UI_TITLE_COLOR,
+    UI_TOP_BAR_HEIGHT,
+    UI_TAB_HEIGHT,
+    UI_TAB_TEXT_SELECTED
+    )
+
+
+def _build_hangar_snapshot(main_player):
+    """Build a hangar snapshot using the Hangar system on the main player.
+
+    The Hangar instance is the single source of truth. We simply delegate to its
+    snapshot() helper, which returns:
+      - assignments: list of interceptor ids per slot
+      - ships: list of Interceptor objects (or None) per slot
+      - pool_by_id: dict[id] -> InterceptorEntry
+    """
+    hangar = getattr(main_player, "hangar_system", None)
+    if hangar is None or not hasattr(hangar, "snapshot"):
+        return [], [], {}
+    return hangar.snapshot()
+
+
+def _entry_is_alive(entry) -> bool:
+    return bool(getattr(entry, "alive", False))
+
+
+def _entry_name(entry) -> str:
+    name = getattr(entry, "name", None)
+    return name if name is not None else "Interceptor"
 
 
 def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
     """
-    Fleet management screen:
+    Fleet management screen (new Hangar system only):
     - 3 slots in a vertical column.
     - Empty slot: hollow circle with '+'.
     - Assigned slot: interceptor preview image drawn instead of the circle.
@@ -26,29 +63,22 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
     width, height = screen.get_size()
 
     # ---------- COLORS / CONSTANTS TO MATCH INTERNAL SCREEN ----------
-    BG_COLOR = (4, 18, 35)
-    NAV_LINE_COLOR = (35, 80, 120)
-    TITLE_COLOR = (185, 210, 235)
-    TOP_BAR_HEIGHT = 96
-    TAB_HEIGHT = 38  # same as internal screen tabs
-
-    # Fonts (title size matches internal screen: 42)
+    # Fonts
     title_font = pygame.font.Font(None, 40)
     label_font = pygame.font.Font(None, 28)
 
     # ----------------- TITLE + NAV LAYOUT -----------------
-    # Title "FLEET CONFIGURATION" positioned like the internal screen title
     title_text = "FLEET CONFIGURATION"
-    title_surf = title_font.render(title_text, True, TITLE_COLOR)
-    title_rect = title_surf.get_rect(center=(width // 2, TOP_BAR_HEIGHT // 2 - 22))
+    title_surf = title_font.render(title_text, True, UI_TITLE_COLOR)
+    title_rect = title_surf.get_rect(center=(width // 2, UI_TOP_BAR_HEIGHT // 2 - 22))
 
     # Nav band (same vertical bounds as internal screen)
-    tabs_y = TOP_BAR_HEIGHT - TAB_HEIGHT - 4
+    tabs_y = UI_TOP_BAR_HEIGHT - UI_TAB_HEIGHT - 4
     nav_top_y = tabs_y - 6
-    nav_bottom_y = tabs_y + TAB_HEIGHT + 6
+    nav_bottom_y = tabs_y + UI_TAB_HEIGHT + 6
 
     # Back arrow and close "X" at same height as in internal screen
-    nav_center_y = TOP_BAR_HEIGHT // 1.3
+    nav_center_y = UI_TOP_BAR_HEIGHT // 1.3
 
     arrow_size = 32
     back_arrow_rect = pygame.Rect(0, 0, arrow_size, arrow_size)
@@ -58,59 +88,20 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
     close_font = pygame.font.Font(None, 40)
     close_surf = close_font.render("X", True, (255, 160, 0))
     close_rect = close_surf.get_rect()
-    close_rect.center = (width - 40, TOP_BAR_HEIGHT // 1.25)
+    close_rect.center = (width - 40, UI_TOP_BAR_HEIGHT // 1.25)
     close_hit_rect = close_rect.inflate(20, 20)
 
-    # ----------------- DATA SAFETY -----------------
-    if not hasattr(main_player, "interceptor_pool"):
-        main_player.interceptor_pool = [
-            {"id": i, "name": f"Interceptor {i+1}", "alive": True}
-            for i in range(5)
-        ]
-    if not hasattr(main_player, "hangar_assignments"):
-        main_player.hangar_assignments = [None, None, None]
-
-    if not hasattr(main_player, "hangar"):
-        main_player.hangar = [False, False, False]
-
-    if not hasattr(main_player, "hangar_ships"):
-        main_player.hangar_ships = [None, None, None]
-
-    # ----------------- LAYOUT CONSTANTS -----------------
-    ROW_CENTER_Y = height // 2
-    COLUMN_SPACING_X = width // 3
-
-    center_x = width // 2
-    left_center_x = center_x - COLUMN_SPACING_X
-    mid_center_x = center_x
-    right_center_x = center_x + COLUMN_SPACING_X
-
-    # Expedition ship (left)
-    ms_w, ms_h = 170, 160
-    ms_rect = pygame.Rect(0, 0, ms_w, ms_h)
-    SHIP_OFFSET_X = 40  # ship offset to the right
-    ms_rect.center = (left_center_x + SHIP_OFFSET_X, ROW_CENTER_Y)
-
-    # Light crafts column (middle)
-    circle_radius = 30
-    circle_spacing = 120
+    
+    # ----------------- LAYOUT CONSTANTS (shared fleet preview geometry) -----------------
+    fleet_layout = compute_fleet_preview_layout(width, height)
+    left_center_x = fleet_layout["left_center_x"]
+    mid_center_x = fleet_layout["mid_center_x"]
+    ms_rect = fleet_layout["ms_rect"]
+    circle_rects = fleet_layout["circle_rects"]
+    fr_rect = fleet_layout["fr_rect"]
+    previews_top = fleet_layout["previews_top"]
+    circle_radius = fleet_layout.get("circle_radius", 30)
     circle_col_x = mid_center_x
-    circle_top_y = ROW_CENTER_Y - circle_spacing
-    circle_rects = []
-    for i in range(3):
-        cx = circle_col_x
-        cy = circle_top_y + i * circle_spacing
-        rect = pygame.Rect(0, 0, circle_radius * 2, circle_radius * 2)
-        rect.center = (cx, cy)
-        circle_rects.append(rect)
-
-    # Escort frigate preview (right)
-    fr_w, fr_h = 140, 70
-    fr_rect = pygame.Rect(0, 0, fr_w, fr_h)
-    fr_rect.center = (right_center_x, ROW_CENTER_Y)
-
-    # For aligning section titles between title band and previews
-    previews_top = min(ms_rect.top, circle_rects[0].top, fr_rect.top)
 
     running = True
     while running:
@@ -133,23 +124,24 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                 for idx, c_rect in enumerate(circle_rects):
                     if c_rect.collidepoint(event.pos):
                         # Open detailed squad card for this hangar slot.
-                        from spacegame.screens.squad_detail import (
-                            squad_detail_screen,
-                        )
+                        from spacegame.screens.squad_detail import squad_detail_screen
 
                         res = squad_detail_screen(main_player, player_fleet, idx)
                         if res == "to_game":
                             return "to_game"
                         break
 
+        # Rebuild a fresh snapshot of hangar state each frame (new system only)
+        assignments, ships, pool_by_id = _build_hangar_snapshot(main_player)
+
         # ------------- DRAW -------------
-        screen.fill(BG_COLOR)
+        screen.fill(UI_BG_COLOR)
 
         # Title
         screen.blit(title_surf, title_rect)
 
         # Back arrow
-        arrow_color = (255, 255, 255)
+        arrow_color = UI_TAB_TEXT_SELECTED
         arrow_points = [
             (back_arrow_rect.left, back_arrow_rect.centery),
             (back_arrow_rect.right, back_arrow_rect.top),
@@ -161,36 +153,27 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
         screen.blit(close_surf, close_rect)
 
         # -------- Section titles + lines (CURRENT LOADOUT / SQUADS / ESCORTS) --------
-        fleet_title_bottom = title_rect.bottom
-        label_height = label_font.size("M")[1]
-        labels_y = fleet_title_bottom + (
-            previews_top - fleet_title_bottom - label_height
-        ) // 7.1
-
-        line_margin = int(label_height * 15 / 19.5)
-
-        # LEFT: CURRENT LOADOUT
-        current_surf = label_font.render("CURRENT LOADOUT", True, NAV_LINE_COLOR)
-        current_rect = current_surf.get_rect()
-        current_rect.centerx = left_center_x
-        current_rect.y = labels_y
-
-        pygame.draw.line(
+        total_slots = len(assignments)
+        equipped_slots = sum(1 for a in assignments if a is not None)
+        frigates = [s for s in player_fleet if isinstance(s, Frigate)]
+        alive_frigates = [f for f in frigates if getattr(f, "health", 0) > 0]
+        draw_fleet_section_titles(
             screen,
-            NAV_LINE_COLOR,
-            (current_rect.left, current_rect.top - line_margin),
-            (current_rect.right * 1.4, current_rect.top - line_margin),
-            1,
+            title_rect,
+            label_font,
+            UI_TITLE_COLOR,
+            UI_NAV_LINE_COLOR,
+            previews_top,
+            left_center_x,
+            circle_col_x,
+            fr_rect.centerx,
+            total_slots,
+            equipped_slots,
+            len(frigates),
+            len(alive_frigates),
         )
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (current_rect.left, current_rect.bottom + line_margin),
-            (current_rect.right * 1.4, current_rect.bottom + line_margin),
-            1,
-        )
-        screen.blit(current_surf, current_rect)
 
+        # LEFT: expedition ship preview and HP
         ms_surf = pygame.transform.smoothscale(
             EXPEDITION_PREVIEW_IMG, (ms_rect.width, ms_rect.height)
         )
@@ -204,49 +187,16 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
             screen, bar_x, bar_y, bar_w, bar_h, main_player.health, main_player.max_health
         )
 
-        # MIDDLE: SQUADS
-        total_slots = len(main_player.hangar_assignments)
-        equipped_slots = sum(1 for a in main_player.hangar_assignments if a is not None)
-        squads_text = (
-            f"SQUADS: {equipped_slots} / {total_slots}"
-            if total_slots > 0
-            else "SQUADS: 0 / 0"
-        )
-
-        squads_surf = label_font.render(squads_text, True, TITLE_COLOR)
-        squads_rect = squads_surf.get_rect()
-        squads_rect.centerx = circle_col_x / 1.2
-        squads_rect.y = labels_y
-
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (squads_rect.left, squads_rect.top - line_margin),
-            (squads_rect.right * 1.45, squads_rect.top - line_margin),
-            1,
-        )
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (squads_rect.left, squads_rect.bottom + line_margin),
-            (squads_rect.right * 1.45, squads_rect.bottom + line_margin),
-            1,
-        )
-        screen.blit(squads_surf, squads_rect)
-
+        # MIDDLE: squad circles (assigned interceptors or empty)
         for i, c_rect in enumerate(circle_rects):
             cx, cy = c_rect.center
 
-            assigned_id = None
-            if 0 <= i < len(main_player.hangar_assignments):
-                assigned_id = main_player.hangar_assignments[i]
-
-            assigned_entry = None
-            if assigned_id is not None:
-                for entry in main_player.interceptor_pool:
-                    if entry["id"] == assigned_id and entry.get("alive", False):
-                        assigned_entry = entry
-                        break
+            assigned_id = assignments[i] if 0 <= i < len(assignments) else None
+            assigned_entry = (
+                pool_by_id.get(assigned_id) if assigned_id is not None else None
+            )
+            if assigned_entry is not None and not _entry_is_alive(assigned_entry):
+                assigned_entry = None
 
             if assigned_entry is not None:
                 r = circle_radius - 4
@@ -258,12 +208,11 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                 screen.blit(icpt_img, img_rect.topleft)
 
                 name_surf = label_font.render(
-                    assigned_entry.get("name", "Interceptor"), True, (220, 220, 255)
+                    _entry_name(assigned_entry), True, (220, 220, 255)
                 )
                 name_x = cx - name_surf.get_width() // 2
                 name_y = c_rect.top - 24
                 screen.blit(name_surf, (name_x, name_y))
-
             else:
                 pygame.draw.circle(
                     screen, (230, 230, 230), (cx, cy), circle_radius, 2
@@ -275,14 +224,10 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                     screen, (230, 230, 230), (cx, cy - 8), (cx, cy + 8), 2
                 )
 
-            fighter_ship = (
-                main_player.hangar_ships[i]
-                if i < len(main_player.hangar_ships)
-                else None
-            )
+            fighter_ship = ships[i] if 0 <= i < len(ships) else None
             fighter_alive = (
                 fighter_ship is not None
-                and fighter_ship.health > 0.0
+                and getattr(fighter_ship, "health", 0.0) > 0.0
                 and fighter_ship in player_fleet
             )
 
@@ -300,36 +245,6 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                     fighter_ship.health,
                     fighter_ship.max_health,
                 )
-
-        # RIGHT: ESCORTS
-        frigates = [s for s in player_fleet if isinstance(s, Frigate)]
-        alive_frigates = [f for f in frigates if getattr(f, "health", 0) > 0]
-
-        if frigates:
-            escorts_text = f"ESCORTS: {len(alive_frigates)} / {len(frigates)}"
-        else:
-            escorts_text = "ESCORTS: 0 / 0"
-
-        escorts_surf = label_font.render(escorts_text, True, TITLE_COLOR)
-        escorts_rect = escorts_surf.get_rect()
-        escorts_rect.centerx = fr_rect.centerx / 1.1
-        escorts_rect.y = labels_y
-
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (escorts_rect.left, escorts_rect.top - line_margin),
-            (escorts_rect.right * 1.14, escorts_rect.top - line_margin),
-            1,
-        )
-        pygame.draw.line(
-            screen,
-            NAV_LINE_COLOR,
-            (escorts_rect.left, escorts_rect.bottom + line_margin),
-            (escorts_rect.right * 1.14, escorts_rect.bottom + line_margin),
-            1,
-        )
-        screen.blit(escorts_surf, escorts_rect)
 
         if frigates:
             f = frigates[0]
@@ -350,4 +265,4 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
             pygame.draw.rect(screen, (80, 80, 80), fr_rect, border_radius=10)
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(FPS)

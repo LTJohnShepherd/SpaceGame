@@ -1,6 +1,7 @@
 import pygame
 from spacegame.models.units.frigate import Frigate
 from spacegame.ui.ui import EXPEDITION_PREVIEW_IMG, FRIGATE_PREVIEW_IMG, INTERCEPTOR_PREVIEW_IMG, draw_triangle, draw_diamond, draw_hex, draw_health_bar
+from spacegame.config import (UI_TAB_TEXT_SELECTED)
 
 class HudUI:
     """Manages the Hud UI in Gamescreen."""
@@ -182,9 +183,6 @@ class HudUI:
             # base interceptor preview image
             icpt_surf = self.interceptor_preview_img.copy()
 
-            # if it's still in hangar, dim it slightly (replacement for old grey triangle)
-            icpt_surf = self.interceptor_preview_img.copy()
-
             # if it's still in hangar, darken the ship sprite itself (no dark box)
             if main_player.hangar[i]:
                 dim = pygame.Surface(icpt_surf.get_size(), pygame.SRCALPHA)
@@ -239,5 +237,5 @@ class HudUI:
 
                 pygame.draw.rect(screen, btn_color, btn_rect, border_radius=6)
                 pygame.draw.rect(screen, (0, 0, 0), btn_rect, 2, border_radius=6)
-                text = font.render(label, True, (255, 255, 255))
+                text = font.render(label, True, UI_TAB_TEXT_SELECTED)
                 screen.blit(text, (btn_rect.x + 10, btn_rect.y + 3))

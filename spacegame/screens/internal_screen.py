@@ -1,7 +1,20 @@
 import sys
 import pygame
 from spacegame.ui.ui import Button, draw_health_bar
-from spacegame.config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
+from spacegame.config import (
+    SCREEN_WIDTH, 
+    SCREEN_HEIGHT, 
+    UI_BG_COLOR, 
+    UI_TAB_HEIGHT, 
+    UI_SECTION_BASE_COLOR, 
+    UI_SECTION_HOVER_COLOR,
+    UI_SECTION_TEXT_COLOR,
+    UI_TAB_UNDERLINE_COLOR,
+    UI_TAB_TEXT_SELECTED,
+    UI_TAB_TEXT_COLOR,
+    UI_NAV_BG_COLOR,
+    UI_NAV_LINE_COLOR
+    )
 
 
 def internal_screen(main_player, player_fleet):
@@ -10,19 +23,7 @@ def internal_screen(main_player, player_fleet):
     if screen is None:
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
-    clock = pygame.time.Clock()
     width, height = screen.get_size()
-
-    # ---------- COLORS ----------
-    BG_COLOR = (4, 18, 35)
-    TAB_TEXT_COLOR = (185, 210, 235)
-    TAB_TEXT_SELECTED = (255, 255, 255)
-    TAB_UNDERLINE_COLOR = (255, 170, 60)
-    NAV_LINE_COLOR = (35, 80, 120)
-    NAV_BG_COLOR = (10, 40, 70)  # brighter strip behind all tabs
-    SECTION_BASE_COLOR = (15, 45, 85)
-    SECTION_HOVER_COLOR = (30, 80, 135)
-    SECTION_TEXT_COLOR = (230, 240, 255)
 
     # ---------- FONTS ----------
     title_font = pygame.font.Font(None, 40)
@@ -35,7 +36,7 @@ def internal_screen(main_player, player_fleet):
 
     # Title in the center of the top bar (moved slightly up to give more room to tabs)
     title_text = "INTERNAL"
-    title_surf = title_font.render(title_text, True, (230, 240, 255))
+    title_surf = title_font.render(title_text, True, UI_SECTION_TEXT_COLOR)
     title_rect = title_surf.get_rect(center=(width // 2, TOP_BAR_HEIGHT // 2 - 22))
 
     # Back arrow (left)
@@ -52,8 +53,6 @@ def internal_screen(main_player, player_fleet):
     # ---------- TABS ----------
     tab_labels = ["EXTERNAL", "INTERNAL", "FLEET CONFIGURATION"]
     selected_tab = 1  # INTERNAL initially selected
-
-    tab_height = 38
     tab_spacing = 16
 
     tab_entries = []
@@ -64,20 +63,20 @@ def internal_screen(main_player, player_fleet):
     H_PADDING = 24
 
     for label in tab_labels:
-        text_surf = tab_font.render(label, True, TAB_TEXT_COLOR)
+        text_surf = tab_font.render(label, True, UI_TAB_TEXT_COLOR)
         text_width = text_surf.get_width()
         tab_width = icon_size + ICON_MARGIN + text_width + H_PADDING * 2
         tab_entries.append({"label": label, "text_surf": text_surf, "width": tab_width})
         total_tabs_width += tab_width + tab_spacing
 
     # Move tabs slightly lower so they are not too close to the title text
-    tabs_y = TOP_BAR_HEIGHT - tab_height - 4
+    tabs_y = TOP_BAR_HEIGHT - UI_TAB_HEIGHT - 4
     tabs_left = width // 2 - total_tabs_width // 2
 
     # Create rects for tabs
     x = tabs_left
     for entry in tab_entries:
-        rect = pygame.Rect(x, tabs_y, entry["width"], tab_height)
+        rect = pygame.Rect(x, tabs_y, entry["width"], UI_TAB_HEIGHT)
         entry["rect"] = rect
         x += entry["width"] + tab_spacing
 
@@ -108,33 +107,33 @@ def internal_screen(main_player, player_fleet):
         centered_rect(*storage_center),
         "STORAGE",
         section_font,
-        base_color=SECTION_BASE_COLOR,
-        hover_color=SECTION_HOVER_COLOR,
-        text_color=SECTION_TEXT_COLOR,
+        base_color=UI_SECTION_BASE_COLOR,
+        hover_color=UI_SECTION_HOVER_COLOR,
+        text_color=UI_SECTION_TEXT_COLOR,
     )
     bridge_btn = Button(
         centered_rect(*bridge_center),
         "BRIDGE",
         section_font,
-        base_color=SECTION_BASE_COLOR,
-        hover_color=SECTION_HOVER_COLOR,
-        text_color=SECTION_TEXT_COLOR,
+        base_color=UI_SECTION_BASE_COLOR,
+        hover_color=UI_SECTION_HOVER_COLOR,
+        text_color=UI_SECTION_TEXT_COLOR,
     )
     fabrication_btn = Button(
         centered_rect(*fabrication_center),
         "FABRICATION",
         section_font,
-        base_color=SECTION_BASE_COLOR,
-        hover_color=SECTION_HOVER_COLOR,
-        text_color=SECTION_TEXT_COLOR,
+        base_color=UI_SECTION_BASE_COLOR,
+        hover_color=UI_SECTION_HOVER_COLOR,
+        text_color=UI_SECTION_TEXT_COLOR,
     )
     refining_btn = Button(
         centered_rect(*refining_center),
         "REFINING",
         section_font,
-        base_color=SECTION_BASE_COLOR,
-        hover_color=SECTION_HOVER_COLOR,
-        text_color=SECTION_TEXT_COLOR,
+        base_color=UI_SECTION_BASE_COLOR,
+        hover_color=UI_SECTION_HOVER_COLOR,
+        text_color=UI_SECTION_TEXT_COLOR,
     )
 
     section_buttons = [
@@ -152,8 +151,6 @@ def internal_screen(main_player, player_fleet):
 
     running = True
     while running:
-        dt = clock.tick(FPS) / 1000.0  # noqa: F841
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -192,23 +189,23 @@ def internal_screen(main_player, player_fleet):
                     btn.handle_event(event)
 
         # ---------- DRAW ----------
-        screen.fill(BG_COLOR)
+        screen.fill(UI_BG_COLOR)
 
         # Nav band coordinates
         nav_top_y = tabs_y - 6
-        nav_bottom_y = tabs_y + tab_height + 6
+        nav_bottom_y = tabs_y + UI_TAB_HEIGHT + 6
 
         # Brighter strip behind all nav text/buttons
         pygame.draw.rect(
             screen,
-            NAV_BG_COLOR,
+            UI_NAV_BG_COLOR,
             (0, nav_top_y, width, nav_bottom_y - nav_top_y),
         )
 
         # Lines above and below the nav/tab area
-        pygame.draw.line(screen, NAV_LINE_COLOR, (0, nav_top_y), (width, nav_top_y), 1)
+        pygame.draw.line(screen, UI_NAV_LINE_COLOR, (0, nav_top_y), (width, nav_top_y), 1)
         pygame.draw.line(
-            screen, NAV_LINE_COLOR, (0, nav_bottom_y), (width, nav_bottom_y), 1
+            screen, UI_NAV_LINE_COLOR, (0, nav_bottom_y), (width, nav_bottom_y), 1
         )
 
         # Title (on top of nav background)
@@ -242,7 +239,7 @@ def internal_screen(main_player, player_fleet):
                 width=2,
             )
 
-            text_color = TAB_TEXT_SELECTED if is_selected else TAB_TEXT_COLOR
+            text_color = UI_TAB_TEXT_SELECTED if is_selected else UI_TAB_TEXT_COLOR
             label_surf = tab_font.render(entry["label"], True, text_color)
             label_rect = label_surf.get_rect()
             label_rect.centery = rect.centery
@@ -253,14 +250,14 @@ def internal_screen(main_player, player_fleet):
                 # highlight segments exactly on the top/bottom nav lines
                 pygame.draw.line(
                     screen,
-                    TAB_UNDERLINE_COLOR,
+                    UI_TAB_UNDERLINE_COLOR,
                     (rect.left + 6, nav_top_y),
                     (rect.right - 6, nav_top_y),
                     2,
                 )
                 pygame.draw.line(
                     screen,
-                    TAB_UNDERLINE_COLOR,
+                    UI_TAB_UNDERLINE_COLOR,
                     (rect.left + 6, nav_bottom_y),
                     (rect.right - 6, nav_bottom_y),
                     2,
@@ -279,7 +276,7 @@ def internal_screen(main_player, player_fleet):
             )
             pygame.draw.rect(
                 screen,
-                (230, 240, 255),
+                UI_SECTION_TEXT_COLOR,
                 icon_box_rect,
                 width=2,
                 border_radius=4,
@@ -292,7 +289,7 @@ def internal_screen(main_player, player_fleet):
                 offset = 7
                 for dx in (-offset, offset):
                     for dy in (-offset, offset):
-                        pygame.draw.circle(screen, (230, 240, 255), (cx + dx, cy + dy), r)
+                        pygame.draw.circle(screen, UI_SECTION_TEXT_COLOR, (cx + dx, cy + dy), r)
             elif name == "BRIDGE":
                 star_r_outer = 10
                 star_r_inner = 4
@@ -304,12 +301,12 @@ def internal_screen(main_player, player_fleet):
                     px = cx + int(r * v.x)
                     py = cy + int(r * v.y)
                     points.append((px, py))
-                pygame.draw.polygon(screen, (230, 240, 255), points, width=1)
+                pygame.draw.polygon(screen, UI_SECTION_TEXT_COLOR, points, width=1)
             elif name == "FABRICATION":
                 p1 = (icon_box_rect.left + 5, icon_box_rect.bottom - 5)
                 p2 = (icon_box_rect.left + 5, icon_box_rect.top + 5)
                 p3 = (icon_box_rect.right - 5, icon_box_rect.bottom - 5)
-                pygame.draw.polygon(screen, (230, 240, 255), [p1, p2, p3], width=1)
+                pygame.draw.polygon(screen, UI_SECTION_TEXT_COLOR, [p1, p2, p3], width=1)
             elif name == "REFINING":
                 bar_w = 4
                 gap = 3
@@ -318,7 +315,7 @@ def internal_screen(main_player, player_fleet):
                     bx = start_x + i * (bar_w + gap)
                     pygame.draw.rect(
                         screen,
-                        (230, 240, 255),
+                        UI_SECTION_TEXT_COLOR,
                         (bx, cy - 8, bar_w, 16),
                         width=1,
                     )

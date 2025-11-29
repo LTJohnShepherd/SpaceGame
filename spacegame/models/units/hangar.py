@@ -1,8 +1,19 @@
+from dataclasses import dataclass
 from spacegame.models.units.interceptor import Interceptor
 
+
+@dataclass
+class InterceptorEntry:
+    """Represents a single interceptor in the persistent hangar pool."""
+    id: int
+    name: str
+    alive: bool = True
+    tier: int = 0
+    rarity: str = "COMMON"
+
+
 class Hangar:
-    """
-    Encapsulates light-craft (interceptor) management for a mothership.
+    """Encapsulates light-craft (interceptor) management for a mothership.
 
     It keeps track of:
       - slots: which hangar slots currently have a ready interceptor in hangar
@@ -25,10 +36,9 @@ class Hangar:
         self.assignments = [None] * num_slots
 
         # Persistent interceptor pool (data only, not ship instances).
-        # Each entry: {"id": int, "name": str, "alive": bool, "tier": int}
-        # Tier is stored per ship entry, so different interceptors can have different tiers.
+        # Tier / rarity are stored per ship entry.
         self.pool = [
-            {"id": i, "name": f"Interceptor {i+1}", "alive": True, "tier": 0}
+            InterceptorEntry(id=i, name=f"Interceptor {i+1}")
             for i in range(pool_size)
         ]
 
@@ -36,7 +46,7 @@ class Hangar:
         self.deployed = []
 
         # Default: assign first alive interceptors to slots, up to num_slots.
-        alive_ids = [e["id"] for e in self.pool if e.get("alive", False)]
+        alive_ids = [e.id for e in self.pool if e.alive]
         for slot in range(self.num_slots):
             if slot < len(alive_ids):
                 self.assignments[slot] = alive_ids[slot]
@@ -47,6 +57,25 @@ class Hangar:
     def can_deploy(self, slot: int) -> bool:
         """Return True if the given slot index has a ready interceptor in hangar."""
         return 0 <= slot < self.num_slots and self.slots[slot]
+
+    def get_entry_by_id(self, interceptor_id: int) -> InterceptorEntry | None:
+        """Return the pool entry with the given id, or None if not found."""
+        for entry in self.pool:
+            if entry.id == interceptor_id:
+                return entry
+        return None
+
+    def get_entry_for_slot(self, slot: int) -> InterceptorEntry | None:
+        """Return the pool entry assigned to a given slot, if any and alive."""
+        if not (0 <= slot < self.num_slots):
+            return None
+        interceptor_id = self.assignments[slot]
+        if interceptor_id is None:
+            return None
+        entry = self.get_entry_by_id(interceptor_id)
+        if entry is None or not entry.alive:
+            return None
+        return entry
 
     # ---------- Deployment / recall / death hooks ----------
 
@@ -65,13 +94,9 @@ class Hangar:
             self.deployed.append(ship)
 
         # Apply per-ship tier from the pool for this assignment (if available)
-        interceptor_id = self.assignments[slot] if 0 <= slot < len(self.assignments) else None
-        if interceptor_id is not None:
-            for entry in self.pool:
-                if entry.get("id") == interceptor_id:
-                    # keep existing ship.tier as fallback if pool entry has no tier
-                    ship.tier = entry.get("tier", getattr(ship, "tier", 1))
-                    break
+        entry = self.get_entry_for_slot(slot)
+        if entry is not None:
+            ship.tier = entry.tier
 
         # remember source slot on the ship itself
         ship.hangar_slot = slot
@@ -100,10 +125,9 @@ class Hangar:
         """
         interceptor_id = getattr(interceptor, "interceptor_id", None)
         if interceptor_id is not None:
-            for entry in self.pool:
-                if entry.get("id") == interceptor_id:
-                    entry["alive"] = False
-                    break
+            entry = self.get_entry_by_id(interceptor_id)
+            if entry is not None:
+                entry.alive = False
 
         slot = getattr(interceptor, "hangar_slot", None)
         if slot is not None and 0 <= slot < self.num_slots:
@@ -133,12 +157,8 @@ class Hangar:
         if not (0 <= slot < self.num_slots):
             return
 
-        # ensure the id exists and is alive
-        exists_alive = any(
-            e.get("id") == interceptor_id and e.get("alive", False)
-            for e in self.pool
-        )
-        if not exists_alive:
+        entry = self.get_entry_by_id(interceptor_id)
+        if entry is None or not entry.alive:
             return
 
         self.assignments[slot] = interceptor_id
@@ -152,11 +172,11 @@ class Hangar:
 
     def alive_pool_entries(self):
         """Return a list of pool entries that are still marked as alive."""
-        return [e for e in self.pool if e.get("alive", False)]
+        return [e for e in self.pool if e.alive]
 
     def selected_interceptor_ids(self):
         """Return a set of interceptor IDs that are assigned to any slot and still alive."""
-        alive_ids = {e.get("id") for e in self.pool if e.get("alive", False)}
+        alive_ids = {e.id for e in self.pool if e.alive}
         result = set()
         for interceptor_id in self.assignments:
             if interceptor_id is None:
@@ -164,6 +184,21 @@ class Hangar:
             if interceptor_id in alive_ids:
                 result.add(interceptor_id)
         return result
+
+
+    def snapshot(self):
+        """Return a simple snapshot of the current hangar state.
+
+        Returns (assignments, ships, pool_by_id) where:
+          - assignments: list of interceptor ids per slot
+          - ships: list of Interceptor (or None) per slot
+          - pool_by_id: dict[id] -> InterceptorEntry
+        """
+        assignments = list(self.assignments)
+        ships = list(self.ships)
+        pool_by_id = {entry.id: entry for entry in self.pool}
+        return assignments, ships, pool_by_id
+
 
     def iter_slot_infos(self):
         """Yield dictionaries describing the state of each hangar slot."""

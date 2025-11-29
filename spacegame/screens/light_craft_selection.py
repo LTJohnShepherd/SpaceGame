@@ -1,9 +1,24 @@
 import pygame
 import sys
-from spacegame.ui.ui import Button, INTERCEPTOR_PREVIEW_IMG
+from spacegame.ui.fleet_management_ui import (
+    draw_tier_icon,
+    draw_fleet_section_titles,
+    compute_fleet_preview_layout,
+)
+from spacegame.ui.ui import INTERCEPTOR_PREVIEW_IMG
 from spacegame.models.units.interceptor import Interceptor
+from spacegame.models.units.frigate import Frigate
+from spacegame.config import (
+    FPS,
+    UI_BG_COLOR, UI_TITLE_COLOR, 
+    UI_TOP_BAR_HEIGHT, 
+    UI_NAV_LINE_COLOR, 
+    UI_ICON_BLUE, 
+    UI_TAB_TEXT_SELECTED
+    )
 
-def light_craft_selection_screen(main_player, slot_index: int):
+
+def light_craft_selection_screen(main_player, player_fleet, slot_index: int):
     screen = pygame.display.get_surface()
     if screen is None:
         return
@@ -11,34 +26,56 @@ def light_craft_selection_screen(main_player, slot_index: int):
     clock = pygame.time.Clock()
     width, height = screen.get_size()
 
-    title_font = pygame.font.Font(None, 48)
+    # fonts
+    title_font = pygame.font.Font(None, 40)
     section_font = pygame.font.Font(None, 32)
     name_font = pygame.font.Font(None, 28)
     dmg_font = pygame.font.Font(None, 22)
-    btn_font = pygame.font.Font(None, 28)
+    label_font = pygame.font.Font(None, 28)  # for CURRENT LOADOUT / SQUADS / ESCORTS
 
-    back_btn = Button((10, 10, 100, 32), "Back", btn_font)
+    # ---- NAV / TITLE (match fleet management) ----
+    title_text = "FLEET CONFIGURATION"
+    title_surf = title_font.render(title_text, True, UI_TITLE_COLOR)
+    title_rect = title_surf.get_rect(center=(width // 2, UI_TOP_BAR_HEIGHT // 2 - 22))
+
+    nav_center_y = UI_TOP_BAR_HEIGHT // 1.3
+
+    arrow_size = 32
+    back_arrow_rect = pygame.Rect(0, 0, arrow_size, arrow_size)
+    back_arrow_rect.center = (40, nav_center_y)
+    back_arrow_hit_rect = back_arrow_rect.inflate(20, 20)
+
+    close_font = pygame.font.Font(None, 40)
+    close_surf = close_font.render("X", True, (255, 160, 0))
+    close_rect = close_surf.get_rect()
+    close_rect.center = (width - 40, UI_TOP_BAR_HEIGHT // 1.25)
+    close_hit_rect = close_rect.inflate(20, 20)
+
+    
+    # ---- FLEET GEOMETRY (shared with fleet_management / squad_detail) ----
+    fleet_layout = compute_fleet_preview_layout(width, height)
+    left_center_x = fleet_layout["left_center_x"]
+    circle_col_x = fleet_layout["mid_center_x"]
+    ms_rect = fleet_layout["ms_rect"]
+    circle_rects = fleet_layout["circle_rects"]
+    fr_rect = fleet_layout["fr_rect"]
+    previews_top = fleet_layout["previews_top"]
+    previews_top = min(ms_rect.top, circle_rects[0].top, fr_rect.top)
 
     # ---- helpers to modify assignments ----
     def clear_slot():
-        if 0 <= slot_index < len(main_player.hangar_assignments):
-            main_player.hangar_assignments[slot_index] = None
-        if 0 <= slot_index < len(main_player.hangar):
-            main_player.hangar[slot_index] = False
-        if 0 <= slot_index < len(main_player.hangar_ships):
-            main_player.hangar_ships[slot_index] = None
+        """Clear the current assignment for this slot via the Hangar API."""
+        hangar = getattr(main_player, "hangar_system", None)
+        if hangar is not None:
+            hangar.clear_slot(slot_index)
 
     def assign_interceptor(icpt_id: int):
-        if 0 <= slot_index < len(main_player.hangar_assignments):
-            main_player.hangar_assignments[slot_index] = icpt_id
-        if 0 <= slot_index < len(main_player.hangar):
-            main_player.hangar[slot_index] = True
-        if 0 <= slot_index < len(main_player.hangar_ships):
-            ship = main_player.hangar_ships[slot_index]
-            if ship is None or ship.health <= 0.0:
-                main_player.hangar_ships[slot_index] = None
+        """Assign an interceptor id to this slot via the Hangar API."""
+        hangar = getattr(main_player, "hangar_system", None)
+        if hangar is not None:
+            hangar.assign_to_slot(slot_index, icpt_id)
 
-    # ---- layout helpers ----
+    # ---- layout helpers for the cards (unchanged visually) ----
     BOX_W = 260
     BOX_H = 80
     COLS = 3
@@ -57,89 +94,51 @@ def light_craft_selection_screen(main_player, slot_index: int):
             rects.append(pygame.Rect(x, y, BOX_W, BOX_H))
         return rects
 
-        # ---- tier helpers ----
-    ICON_BLUE = (70, 130, 220)
-    ICON_WHITE = (240, 240, 255)
-
-    def tier_to_roman(tier_value: int) -> str:
-        if tier_value <= 0:
-            return "0"
-        numerals = ["", "I", "II", "III"]
-        if tier_value < len(numerals):
-            return numerals[tier_value]
-        # fallback nums
-        return numerals[-1] + f"+{tier_value - (len(numerals) - 1)}"
-
-    def draw_tier_icon(surface, rect, tier_value):
-        """
-        Blue flag in the top-right corner.
-        Inside it – large centered roman numeral (no white inner box).
-        """
-
-        # make the font larger and clearer
-        large_tier_font = pygame.font.Font(None, 26)
-
-        # smaller, tighter flag
-        flag_w = 22
-        flag_h = 22
-        flag_rect = pygame.Rect(rect.right - flag_w - 1, rect.top + 1, flag_w, flag_h)
-
-        # draw blue box
-        pygame.draw.rect(surface, ICON_BLUE, flag_rect)
-
-        # convert tier to roman numerals
-        text = tier_to_roman(int(tier_value))
-
-        # render large, centered numeral
-        tier_text = large_tier_font.render(text, True, ICON_WHITE)
-
-        # clean perfect centering
-        tier_rect = tier_text.get_rect(center=flag_rect.center)
-
-        surface.blit(tier_text, tier_rect)
-
-    # we will recompute rects every frame (simple)
     running = True
     while running:
 
-        # recompute alive/selected/stored every frame
+        # recompute alive/selected/stored every frame from the Hangar system
         hangar = getattr(main_player, "hangar_system", None)
-        if hangar is not None:
-            alive_entries = hangar.alive_pool_entries()
-            selected_ids = hangar.selected_interceptor_ids()
-        else:
-            pool = getattr(main_player, "interceptor_pool", [])
-            assignments = getattr(main_player, "hangar_assignments", [])
-            alive_entries = [e for e in pool if e.get("alive", False)]
+        if hangar is None:
+            return
 
-            selected_ids = set()
-            for assigned_id in assignments:
-                if assigned_id is None:
-                    continue
-                for e in alive_entries:
-                    if e.get("id") == assigned_id:
-                        selected_ids.add(assigned_id)
-                        break
+        alive_entries = hangar.alive_pool_entries()
+        selected_ids = hangar.selected_interceptor_ids()
 
-        selected_items = [e for e in alive_entries if e.get("id") in selected_ids]
-        stored_items   = [e for e in alive_entries if e.get("id") not in selected_ids]
+        selected_items = [e for e in alive_entries if e.id in selected_ids]
+        stored_items = [e for e in alive_entries if e.id not in selected_ids]
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                pygame.quit()
+                sys.exit()
 
-            if back_btn.handle_event(event):
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
 
+                # nav: back arrow / close X
+                if back_arrow_hit_rect.collidepoint(mx, my):
+                    return
+
+                # X should act like other screens: go to game screen
+                if close_hit_rect.collidepoint(mx, my):
+                    return "to_game"
+
+                # card hit-testing
                 selected_count = 1 + len(selected_items)   # 1 for "None"
-                top_selected_y = 130
+                selected_title_y = UI_TOP_BAR_HEIGHT + 10
+                top_selected_y = selected_title_y + 40
                 selected_rects = layout_rects(selected_count, top_selected_y)
 
-                none_rect = selected_rects[0]
-                selected_craft_rects = selected_rects[1:]
+                if selected_rects:
+                    none_rect = selected_rects[0]
+                    selected_craft_rects = selected_rects[1:]
+                else:
+                    none_rect = None
+                    selected_craft_rects = []
 
                 stored_title_y = (
                     (selected_rects[-1].bottom + 40)
@@ -149,33 +148,70 @@ def light_craft_selection_screen(main_player, slot_index: int):
                 stored_rects = layout_rects(len(stored_items), stored_title_y + 40)
 
                 # 1) "None" button (first in selected list)
-                if none_rect.collidepoint(mx, my):
+                if none_rect is not None and none_rect.collidepoint(mx, my):
                     clear_slot()
                     return
 
-                # 2) Selected crafts are NOT selectable (just visual) – skip
+                # 2) Selected crafts are NOT selectable (just visual)
 
                 # 3) Stored crafts ARE selectable
                 for rect, entry in zip(stored_rects, stored_items):
                     if rect.collidepoint(mx, my):
-                        assign_interceptor(entry["id"])
+                        assign_interceptor(entry.id)
                         return
 
-        screen.fill((12, 12, 20))
+        # background (match fleet management)
+        screen.fill(UI_BG_COLOR)
 
-        # main title
-        t = title_font.render("Light Craft Selection", True, (255, 255, 255))
-        screen.blit(t, (width // 2 - t.get_width() // 2, 40))
+        # nav title
+        screen.blit(title_surf, title_rect)
 
-        back_btn.draw(screen)
+        # back arrow
+        arrow_color = UI_TAB_TEXT_SELECTED
+        arrow_points = [
+            (back_arrow_rect.left, back_arrow_rect.centery),
+            (back_arrow_rect.right, back_arrow_rect.top),
+            (back_arrow_rect.right, back_arrow_rect.bottom),
+        ]
+        pygame.draw.polygon(screen, arrow_color, arrow_points)
 
-        # ---- Selected crafts section ----
-        selected_title = section_font.render("Selected crafts", True, (220, 220, 255))
-        selected_title_y = 90
-        screen.blit(selected_title, (width // 2 - selected_title.get_width() // 2, selected_title_y))
+        # close X
+        screen.blit(close_surf, close_rect)
+
+        # ---- CURRENT LOADOUT / SQUADS / ESCORTS (same geometry as fleet_management) ----
+        assignments = hangar.assignments
+        total_slots = len(assignments)
+        equipped_slots = sum(1 for a in assignments if a is not None)
+
+        frigates = [s for s in player_fleet if isinstance(s, Frigate)]
+        alive_frigates = [f for f in frigates if getattr(f, "health", 0) > 0]
+
+        draw_fleet_section_titles(
+            screen,
+            title_rect,
+            label_font,
+            UI_TITLE_COLOR,
+            UI_NAV_LINE_COLOR,
+            previews_top,
+            left_center_x,
+            circle_col_x,
+            fr_rect.centerx,
+            total_slots,
+            equipped_slots,
+            len(frigates),
+            len(alive_frigates),
+        )
+
+        # ---- Selected crafts section (title + cards) ----
+        selected_title = section_font.render("SELECTED CRAFTS", True, (220, 220, 255))
+        selected_title_y = UI_TOP_BAR_HEIGHT + 10
+        screen.blit(
+            selected_title,
+            (width // 3.75 - selected_title.get_width() // 2, selected_title_y),
+        )
 
         selected_count = 1 + len(selected_items)   # "None" + selected entries
-        top_selected_y = 130
+        top_selected_y = selected_title_y + 40
         selected_rects = layout_rects(selected_count, top_selected_y)
 
         if selected_rects:
@@ -185,7 +221,7 @@ def light_craft_selection_screen(main_player, slot_index: int):
             none_rect = None
             selected_craft_rects = []
 
-        # draw "None" (first selected box) – sharp corners
+        # draw "None" (first selected box) – sharp corners (UNCHANGED)
         if none_rect is not None:
             pygame.draw.rect(screen, (30, 40, 70), none_rect, border_radius=0)
             pygame.draw.rect(screen, (200, 80, 80), none_rect, 2, border_radius=0)
@@ -196,25 +232,29 @@ def light_craft_selection_screen(main_player, slot_index: int):
 
             pygame.draw.circle(screen, (200, 60, 60), (preview_x, preview_y), 22, 3)
             pygame.draw.line(
-                screen, (200, 60, 60),
+                screen,
+                (200, 60, 60),
                 (preview_x - 12, preview_y - 12),
-                (preview_x + 12, preview_y + 12), 3
+                (preview_x + 12, preview_y + 12),
+                3,
             )
             pygame.draw.line(
-                screen, (200, 60, 60),
+                screen,
+                (200, 60, 60),
                 (preview_x + 12, preview_y - 12),
-                (preview_x - 12, preview_y + 12), 3
+                (preview_x - 12, preview_y + 12),
+                3,
             )
 
             name = name_font.render("None", True, (230, 230, 255))
             screen.blit(name, (preview_x + 50, none_rect.y + 24))
 
-        # draw selected crafts (visual only)
+        # draw selected crafts (visual only) – UNCHANGED
         for rect, entry in zip(selected_craft_rects, selected_items):
             pygame.draw.rect(screen, (30, 40, 70), rect, border_radius=0)
-            pygame.draw.rect(screen, ICON_BLUE, rect, 2, border_radius=0)  # border matches icon color
+            pygame.draw.rect(screen, UI_ICON_BLUE, rect, 2, border_radius=0)
 
-            tier_value = entry.get("tier", 0)
+            tier_value = getattr(entry, "tier", 0)
             draw_tier_icon(screen, rect, tier_value)
 
             preview_x = rect.x + 40
@@ -225,30 +265,36 @@ def light_craft_selection_screen(main_player, slot_index: int):
             rect_img = img.get_rect(center=(preview_x, preview_y))
             screen.blit(img, rect_img.topleft)
 
-            name = name_font.render(entry["name"], True, (230, 230, 255))
+            name = name_font.render(entry.name, True, (230, 230, 255))
             screen.blit(name, (preview_x + 50, rect.y + 12))
 
             dmg = Interceptor.DEFAULT_BULLET_DAMAGE
-            dmg_text = dmg_font.render(f"Damage: {int(dmg)}", True, (200, 200, 220))
+            dmg_text = dmg_font.render(
+                f"Damage: {int(dmg)}", True, (200, 200, 220)
+            )
             screen.blit(dmg_text, (preview_x + 50, rect.y + 44))
 
-        # ---- Stored crafts section ----
+        # ---- Stored crafts section (title + cards) ----
         stored_title_y = (
             (selected_rects[-1].bottom + 40)
             if selected_rects
             else (top_selected_y + 40)
         )
 
-        stored_title = section_font.render("Stored crafts", True, (220, 220, 255))
-        screen.blit(stored_title, (width // 2 - stored_title.get_width() // 2, stored_title_y))
+        stored_title = section_font.render("STORED CRAFTS", True, (220, 220, 255))
+        screen.blit(
+            stored_title,
+            (width // 3.9 - stored_title.get_width() // 2, stored_title_y),
+        )
 
         stored_rects = layout_rects(len(stored_items), stored_title_y + 40)
 
+        # stored cards – UNCHANGED
         for rect, entry in zip(stored_rects, stored_items):
             pygame.draw.rect(screen, (30, 40, 70), rect, border_radius=0)
-            pygame.draw.rect(screen, ICON_BLUE, rect, 2, border_radius=0)  # border matches icon color
+            pygame.draw.rect(screen, UI_ICON_BLUE, rect, 2, border_radius=0)
 
-            tier_value = entry.get("tier", 0)
+            tier_value = getattr(entry, "tier", 0)
             draw_tier_icon(screen, rect, tier_value)
 
             preview_x = rect.x + 40
@@ -259,12 +305,14 @@ def light_craft_selection_screen(main_player, slot_index: int):
             rect_img = img.get_rect(center=(preview_x, preview_y))
             screen.blit(img, rect_img.topleft)
 
-            name = name_font.render(entry["name"], True, (230, 230, 255))
+            name = name_font.render(entry.name, True, (230, 230, 255))
             screen.blit(name, (preview_x + 50, rect.y + 12))
 
             dmg = Interceptor.DEFAULT_BULLET_DAMAGE
-            dmg_text = dmg_font.render(f"Damage: {int(dmg)}", True, (200, 200, 220))
+            dmg_text = dmg_font.render(
+                f"Damage: {int(dmg)}", True, (200, 200, 220)
+            )
             screen.blit(dmg_text, (preview_x + 50, rect.y + 44))
 
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(FPS)
