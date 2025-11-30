@@ -7,7 +7,7 @@ from spacegame.ui.fleet_management_ui import (
 )
 
 from pygame.math import Vector2
-from spacegame.ui.ui import INTERCEPTOR_PREVIEW_IMG, draw_triangle
+from spacegame.ui.ui import preview_for_unit, draw_triangle, draw_dalton
 from spacegame.models.units.frigate import Frigate
 from spacegame.models.units.interceptor import Interceptor
 from spacegame.config import (
@@ -453,21 +453,43 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
 
         # -------- RIGHT PREVIEW / STATUS --------
         if is_equipped:
-            # triangle frame (blue) a bit higher with preview_center
-            draw_triangle(
-                screen,
-                (preview_center.x, preview_center.y),
-                preview_size * 1.1,
-                (80, 200, 255),
-                2,
-            )
+            # Determine the equipped entry and pick the preview via helper
+            entry = None
+            try:
+                hangar = getattr(main_player, "hangar_system", None)
+                assigned_id = hangar.assignments[slot_index] if hangar is not None else None
+                entry = hangar.get_entry_by_id(assigned_id) if (hangar is not None and assigned_id is not None) else None
+            except Exception:
+                entry = None
+
+            unit_type = getattr(entry, "unit_type") if entry is not None else "interceptor"
+            ship_preview = preview_for_unit(unit_type)
+
+            # Draw a background frame: use the kite (dalton) for resource collectors,
+            # otherwise keep the existing triangle frame.
+            if entry is not None and getattr(entry, "unit_type") == "resource_collector":
+                # width, height tuned to sit nicely behind the preview
+                draw_dalton(
+                    screen,
+                    (preview_center.x, preview_center.y),
+                    preview_size * 0.9,
+                    preview_size * 1.1,
+                    (80, 200, 255),
+                    2,
+                )
+            else:
+                draw_triangle(
+                    screen,
+                    (preview_center.x, preview_center.y),
+                    preview_size * 1.1,
+                    (80, 200, 255),
+                    2,
+                )
 
             # ship preview
             ship_w = 160
             ship_h = 100
-            ship_img = pygame.transform.smoothscale(
-                INTERCEPTOR_PREVIEW_IMG, (ship_w, ship_h)
-            )
+            ship_img = pygame.transform.smoothscale(ship_preview, (ship_w, ship_h))
             ship_rect = ship_img.get_rect()
             ship_rect.center = (int(preview_center.x), int(preview_center.y))
             screen.blit(ship_img, ship_rect.topleft)

@@ -1,6 +1,7 @@
 import pygame
 from spacegame.models.units.frigate import Frigate
-from spacegame.ui.ui import EXPEDITION_PREVIEW_IMG, FRIGATE_PREVIEW_IMG, INTERCEPTOR_PREVIEW_IMG, draw_triangle, draw_diamond, draw_hex, draw_health_bar, draw_armor_bar
+from spacegame.models.units.resource_collector import ResourceCollector
+from spacegame.ui.ui import preview_for_unit, draw_triangle, draw_diamond, draw_dalton, draw_hex, draw_health_bar, draw_armor_bar
 from spacegame.config import (UI_TAB_TEXT_SELECTED)
 
 class HudUI:
@@ -10,9 +11,12 @@ class HudUI:
         self.font = font
         self.preview_size = preview_size
 
-        # pre-scaled interceptor preview sprite for hangar icons
+        # pre-scaled light craft preview sprites for hangar icons
         self.interceptor_preview_img = pygame.transform.smoothscale(
-            INTERCEPTOR_PREVIEW_IMG, (preview_size, preview_size)
+            preview_for_unit("interceptor"), (preview_size, preview_size)
+        )
+        self.resource_collector_preview_img = pygame.transform.smoothscale(
+            preview_for_unit("resource_collector"), (preview_size, preview_size)
         )
 
         # --- Unified preview row layout ---
@@ -106,7 +110,7 @@ class HudUI:
             3
         )
 
-        ms_surf = pygame.transform.smoothscale(EXPEDITION_PREVIEW_IMG, (ms_w, ms_h))
+        ms_surf = pygame.transform.smoothscale(preview_for_unit("expedition"), (ms_w, ms_h))
         ms_x = int(ms_center.x - ms_w / 2)
         ms_y = int(ms_center.y - ms_h / 2)
         screen.blit(ms_surf, (ms_x, ms_y))
@@ -149,7 +153,7 @@ class HudUI:
 
             # use frigate preview image
             fr_img = pygame.transform.smoothscale(
-                FRIGATE_PREVIEW_IMG,
+                preview_for_unit("frigate"),
                 (int(fr_w), int(fr_h))
             )
             fr_x = int(fr_center.x - fr_w / 2)
@@ -177,7 +181,7 @@ class HudUI:
             icpts = getattr(main_player, 'hangar_ships', [None, None, None])
             fighter_ship = icpts[i] if i < len(icpts) else None
 
-            # If this slot has neither an interceptor in hangar nor a live one deployed,
+            # If this slot has neither a craft in hangar nor a live one deployed,
             # do not show a preview at all (this lets you have 0/1/2/3 previews).
             fighter_alive = (
                 fighter_ship is not None and
@@ -188,31 +192,60 @@ class HudUI:
                 hangar_slot['show_button'] = False
                 continue
 
-            # base interceptor preview image
-            icpt_surf = self.interceptor_preview_img.copy()
+            # Get the unit type from hangar entry to determine which preview and shape to use
+            unit_type = "interceptor"  # default
+            if fighter_ship is not None:
+                unit_type = getattr(fighter_ship, 'shape_id', lambda: "interceptor")()
+            else:
+                # Check the pool entry for the assigned unit
+                entry_id = main_player.hangar_assignments[i] if i < len(main_player.hangar_assignments) else None
+                if entry_id is not None:
+                    entry = main_player.hangar_system.get_entry_by_id(entry_id)
+                    if entry is not None:
+                        unit_type = entry.unit_type
+
+            # Select the appropriate preview image based on unit type
+            if unit_type == "resource_collector":
+                craft_preview_img = self.resource_collector_preview_img.copy()
+            else:
+                # default to interceptor
+                craft_preview_img = self.interceptor_preview_img.copy()
 
             # if it's still in hangar, darken the ship sprite itself (no dark box)
             if main_player.hangar[i]:
-                dim = pygame.Surface(icpt_surf.get_size(), pygame.SRCALPHA)
+                dim = pygame.Surface(craft_preview_img.get_size(), pygame.SRCALPHA)
                 dim.fill((128, 128, 128, 255))  # < 255 => darker
-                icpt_surf.blit(dim, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                craft_preview_img.blit(dim, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
-            # Triangle overlay over interceptor preview, like in gameScreen (KEEP GREEN TRIANGLES)
-            icpt_center = (
+            # Draw the appropriate shape overlay based on unit type
+            craft_center = (
                 hangar_slot['preview_position'].x,
                 hangar_slot['preview_position'].y
             )
-            draw_triangle(
-                screen,
-                icpt_center,
-                preview_size * 1.2,
-                (80, 255, 190),
-                2
-            )
+            
+            if unit_type == "resource_collector":
+                # Draw dalton shape for resource collector (long end pointing down)
+                draw_dalton(
+                    screen,
+                    craft_center,
+                    preview_size * 1.2,
+                    preview_size * 1.5,  # make it taller to emphasize the downward point
+                    (80, 255, 190),
+                    2
+                )
+            else:
+                # Draw triangle for interceptor
+                draw_triangle(
+                    screen,
+                    craft_center,
+                    preview_size * 1.2,
+                    (80, 255, 190),
+                    2
+                )
             
             preview_x = hangar_slot['preview_position'].x - preview_size // 2
             preview_y = hangar_slot['preview_position'].y - preview_size // 2
-            screen.blit(icpt_surf, (preview_x, preview_y))
+            screen.blit(craft_preview_img, (preview_x, preview_y))
 
             # Health bar under preview when deployed and alive
             if fighter_alive:
@@ -223,7 +256,7 @@ class HudUI:
                 bar_y = preview_y + preview_size + pad
 
                 draw_health_bar(screen, bar_x, bar_y, bar_w, bar_h, fighter_ship.health, fighter_ship.max_health)
-                # Armor bar directly under health, if interceptor has armor
+                # Armor bar directly under health, if craft has armor
                 if getattr(fighter_ship, 'max_armor', 0) > 0:
                     armor_y = bar_y + bar_h + 2
                     draw_armor_bar(screen, bar_x, armor_y, bar_w, bar_h, getattr(fighter_ship, 'armor', 0), getattr(fighter_ship, 'max_armor', 0))

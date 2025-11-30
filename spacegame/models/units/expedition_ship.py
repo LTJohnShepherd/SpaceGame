@@ -2,12 +2,14 @@ import pygame
 from pygame.math import Vector2
 from spacegame.models.units.fleet_unit import SpaceUnit
 from spacegame.models.units.interceptor import Interceptor
-from spacegame.models.units.hangar import Hangar
+from spacegame.models.units.resource_collector import ResourceCollector
+from spacegame.core.hangar import Hangar
 from spacegame.config import (
     EXPEDITION_MAX_HEALTH,
     EXPEDITION_MAX_ARMOR,
     HANGAR_SLOT_COUNT,
     INTERCEPTOR_POOL_SIZE,
+    RESOURCE_COLLECTOR_POOL_SIZE,
     IMAGES_DIR,
 )
 
@@ -43,13 +45,19 @@ class ExpeditionShip(SpaceUnit):
         self.max_armor = EXPEDITION_MAX_ARMOR
         self.armor = self.max_armor
 
-                # Hangar system: delegate light-craft management to Hangar helper.
+        # Hangar system: delegate light-craft management to Hangar helper.
         # Hangar keeps:
-        #   - slots: which hangar slots currently have a ready interceptor
-        #   - ships: which Interceptor objects are deployed from each slot
+        #   - slots: which hangar slots currently have a ready craft
+        #   - ships: which unit objects are deployed from each slot
         #   - assignments: which pool id is assigned to each slot
-        #   - pool: persistent interceptor data for fleet-management screens
-        self.hangar_system = Hangar(self, num_slots=HANGAR_SLOT_COUNT, pool_size=INTERCEPTOR_POOL_SIZE)
+        #   - pool: persistent craft data for fleet-management screens
+        # Both interceptors and resource collectors are created once here at game start.
+        self.hangar_system = Hangar(
+            self,
+            num_slots=HANGAR_SLOT_COUNT,
+            interceptor_pool_size=INTERCEPTOR_POOL_SIZE,
+            collector_pool_size=RESOURCE_COLLECTOR_POOL_SIZE,
+        )
 
         # Backwards-compatible aliases so existing screens (fleet management, HUD, etc.)
         # can keep using the older attributes. These all point into the Hangar instance.
@@ -67,35 +75,41 @@ class ExpeditionShip(SpaceUnit):
         return self.hangar_system.can_deploy(slot)
 
     def deploy(self, slot):
-        """Deploy an interceptor from the given hangar slot, if available.
-
-        The actual Interceptor object is spawned in front of the mothership and
-        added to the active fleet externally; this method just constructs it and
-        updates the Hangar's state.
+        """Deploy a light craft from the given hangar slot, if available.
+        The actual unit object is spawned in front of the mothership and 
+        added to the active fleet externally. 
+        this method just constructs it and updates the Hangar's state.
         """
         if not self.can_deploy(slot):
             return None
 
         hangar = self.hangar_system
 
-        # Determine which interceptor from the persistent pool is assigned to this slot (if any)
-        interceptor_id = None
+        # Determine which unit from the persistent pool is assigned to this slot (if any)
+        unit_id = None
         if 0 <= slot < len(hangar.assignments):
-            interceptor_id = hangar.assignments[slot]
+            unit_id = hangar.assignments[slot]
 
         # Spawn slightly in front of the rectangle (relative to current facing)
         offset = Vector2(70, 50).rotate(-self.angle)
 
-        # Look up this interceptor's tier from the Hangar pool data (per-ship).
+        # Look up this unit's tier from the Hangar pool data (per-ship).
         tier_value = 0
-        if interceptor_id is not None:
-            entry = hangar.get_entry_by_id(interceptor_id)
+        unit_type = ""
+        
+        if unit_id is not None:
+            entry = hangar.get_entry_by_id(unit_id)
             if entry is not None and entry.alive:
                 tier_value = entry.tier
+                unit_type = entry.unit_type
 
-        icpt = Interceptor(self.pos + offset, interceptor_id=interceptor_id, tier=tier_value)
+        # Spawn the appropriate unit type
+        if unit_type == "resource_collector":
+            unit = ResourceCollector(self.pos + offset, collector_id=unit_id, tier=tier_value)
+        elif unit_type == "interceptor":
+            unit = Interceptor(self.pos + offset, interceptor_id=unit_id, tier=tier_value)
 
-        # Notify Hangar that an interceptor was deployed so it can update slots / bookkeeping.
-        hangar.on_deployed(slot, icpt)
+        # Notify Hangar that a unit was deployed so it can update slots / bookkeeping.
+        hangar.on_deployed(slot, unit)
 
-        return icpt
+        return unit

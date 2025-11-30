@@ -7,10 +7,10 @@ class HangarEntry:
     """Represents a single light-craft in the persistent hangar pool."""
     id: int
     name: str
-    unit_type: str = "interceptor"
+    unit_type: str = ""
     alive: bool = True
     tier: int = 0
-    rarity: str = "COMMON"
+    rarity: str = ""
 
 
 class Hangar:
@@ -23,7 +23,7 @@ class Hangar:
       - pool: the persistent pool (all possible crafts, alive/dead, any unit_type)
     """
 
-    def __init__(self, owner, num_slots: int = 3, pool_size: int = 5) -> None:
+    def __init__(self, owner, num_slots: int = 3, interceptor_pool_size: int = 5, collector_pool_size: int = 0) -> None:
         self.owner = owner
         self.num_slots = num_slots
 
@@ -37,22 +37,64 @@ class Hangar:
         self.assignments = [None] * num_slots  # type: list[int | None]
 
         # Persistent pool (data only, not ship instances).
-        # tier / rarity / unit_type per entry.
-        self.pool = [
-            HangarEntry(id=i, name=f"Interceptor {i+1}", unit_type="interceptor")
-            for i in range(pool_size)
-        ]
+        # Initialized with both interceptors and resource collectors at game start.
+        self.pool = self._initialize_pool(interceptor_pool_size, collector_pool_size)
 
         # Track all currently deployed ships from this hangar.
         self.deployed = []
 
         # Default: assign first alive entries to slots, up to num_slots.
+        self._assign_default_slots()
+
+
+    # ---------- Pool initialization ----------
+
+    def _initialize_pool(self, interceptor_count: int, collector_count: int) -> list[HangarEntry]:
+        """Create and return the initial hangar pool with interceptors and collectors.
+        
+        This method is called once at Hangar initialization to set up all beginner
+        crafts. It creates `interceptor_count` interceptors followed by `collector_count`
+        resource collectors, assigning them unique sequential IDs.
+        
+        Args:
+            interceptor_count: Number of interceptor entries to create.
+            collector_count: Number of resource collector entries to create.
+        
+        Returns:
+            List of HangarEntry objects with unique IDs.
+        """
+        pool = []
+        entry_id = 0
+
+        # Create interceptor entries (IDs 0 to interceptor_count-1)
+        for i in range(interceptor_count):
+            pool.append(HangarEntry(
+                id=entry_id,
+                name=f"Interceptor {i+1}",
+                unit_type="interceptor"
+            ))
+            entry_id += 1
+
+        # Create resource collector entries (IDs starting after interceptors)
+        for j in range(collector_count):
+            pool.append(HangarEntry(
+                id=entry_id,
+                name=f"Collector {j+1}",
+                unit_type="resource_collector"
+            ))
+            entry_id += 1
+
+        return pool
+
+    def _assign_default_slots(self) -> None:
+        """Assign the first alive pool entries to available hangar slots.
+        Called during initialization to populate slots with default assignments.
+        """
         alive_ids = [e.id for e in self.pool if e.alive]
         for slot in range(self.num_slots):
             if slot < len(alive_ids):
                 self.assignments[slot] = alive_ids[slot]
                 self.slots[slot] = True
-
 
     # ---------- Query helpers ----------
 

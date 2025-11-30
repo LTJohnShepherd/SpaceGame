@@ -6,12 +6,7 @@ from spacegame.ui.fleet_management_ui import (
 )
 from spacegame.models.units.expedition_ship import ExpeditionShip
 from spacegame.models.units.frigate import Frigate
-from spacegame.ui.ui import (
-    EXPEDITION_PREVIEW_IMG,
-    FRIGATE_PREVIEW_IMG,
-    INTERCEPTOR_PREVIEW_IMG,
-    draw_health_bar,
-)
+from spacegame.ui.ui import preview_for_unit, draw_health_bar
 from spacegame.config import (
     FPS,
     UI_BG_COLOR, 
@@ -175,7 +170,7 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
 
         # LEFT: expedition ship preview and HP
         ms_surf = pygame.transform.smoothscale(
-            EXPEDITION_PREVIEW_IMG, (ms_rect.width, ms_rect.height)
+            preview_for_unit("expedition"), (ms_rect.width, ms_rect.height)
         )
         screen.blit(ms_surf, ms_rect.topleft)
         bar_pad = 6
@@ -201,9 +196,9 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
             if assigned_entry is not None:
                 r = circle_radius - 4
                 size = int(r * 2)
-                icpt_img = pygame.transform.smoothscale(
-                    INTERCEPTOR_PREVIEW_IMG, (size, size)
-                )
+                # choose preview image by unit_type
+                preview_img = preview_for_unit(getattr(assigned_entry, "unit_type"))
+                icpt_img = pygame.transform.smoothscale(preview_img, (size, size))
                 img_rect = icpt_img.get_rect(center=(cx, cy))
                 screen.blit(icpt_img, img_rect.topleft)
 
@@ -249,7 +244,7 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
         if frigates:
             f = frigates[0]
             fr_img = pygame.transform.smoothscale(
-                FRIGATE_PREVIEW_IMG, (fr_rect.width, fr_rect.height)
+                preview_for_unit("frigate"), (fr_rect.width, fr_rect.height)
             )
             screen.blit(fr_img, fr_rect.topleft)
 

@@ -5,7 +5,7 @@ from spacegame.ui.fleet_management_ui import (
     draw_fleet_section_titles,
     compute_fleet_preview_layout,
 )
-from spacegame.ui.ui import INTERCEPTOR_PREVIEW_IMG
+from spacegame.ui.ui import preview_for_unit
 from spacegame.models.units.interceptor import Interceptor
 from spacegame.models.units.frigate import Frigate
 from spacegame.config import (
@@ -260,18 +260,21 @@ def light_craft_selection_screen(main_player, player_fleet, slot_index: int):
             preview_x = rect.x + 40
             preview_y = rect.y + rect.height // 2
 
-            # preview image
-            img = pygame.transform.smoothscale(INTERCEPTOR_PREVIEW_IMG, (48, 48))
+            # preview image (pick by unit_type)
+            preview_img = preview_for_unit(getattr(entry, "unit_type"))
+            img = pygame.transform.smoothscale(preview_img, (48, 48))
             rect_img = img.get_rect(center=(preview_x, preview_y))
             screen.blit(img, rect_img.topleft)
 
             name = name_font.render(entry.name, True, (230, 230, 255))
             screen.blit(name, (preview_x + 50, rect.y + 12))
 
-            dmg = Interceptor.DEFAULT_BULLET_DAMAGE
-            dmg_text = dmg_font.render(
-                f"Damage: {int(dmg)}", True, (200, 200, 220)
-            )
+            # show damage (resource collectors have 0 damage)
+            if getattr(entry, "unit_type") == "resource_collector":
+                dmg = 0
+            elif getattr(entry, "unit_type") == "interceptor":
+                dmg = Interceptor.DEFAULT_BULLET_DAMAGE
+            dmg_text = dmg_font.render(f"Damage: {int(dmg)}", True, (200, 200, 220))
             screen.blit(dmg_text, (preview_x + 50, rect.y + 44))
 
         # ---- Stored crafts section (title + cards) ----
@@ -300,18 +303,21 @@ def light_craft_selection_screen(main_player, player_fleet, slot_index: int):
             preview_x = rect.x + 40
             preview_y = rect.y + rect.height // 2
 
-            # preview image
-            img = pygame.transform.smoothscale(INTERCEPTOR_PREVIEW_IMG, (48, 48))
+            # preview image (pick by unit_type)
+            preview_img = preview_for_unit(getattr(entry, "unit_type"))
+            img = pygame.transform.smoothscale(preview_img, (48, 48))
             rect_img = img.get_rect(center=(preview_x, preview_y))
             screen.blit(img, rect_img.topleft)
 
             name = name_font.render(entry.name, True, (230, 230, 255))
             screen.blit(name, (preview_x + 50, rect.y + 12))
 
-            dmg = Interceptor.DEFAULT_BULLET_DAMAGE
-            dmg_text = dmg_font.render(
-                f"Damage: {int(dmg)}", True, (200, 200, 220)
-            )
+            # show damage (resource collectors have 0 damage)
+            if getattr(entry, "unit_type") == "resource_collector":
+                dmg = 0
+            elif getattr(entry, "unit_type") == "interceptor":
+                dmg = Interceptor.DEFAULT_BULLET_DAMAGE
+            dmg_text = dmg_font.render(f"Damage: {int(dmg)}", True, (200, 200, 220))
             screen.blit(dmg_text, (preview_x + 50, rect.y + 44))
 
         pygame.display.flip()

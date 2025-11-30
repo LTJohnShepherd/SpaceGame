@@ -55,9 +55,45 @@ class Projectile:
         pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), self.radius)
 
     def collides_with_shape(self, spaceship):
-        # Circle vs spaceship-approx collision using spaceship's bounding circle
-        dx = self.pos.x - spaceship.pos.x
-        dy = self.pos.y - spaceship.pos.y
-        dist2 = dx*dx + dy*dy
-        hit_r = spaceship.bounding_radius()
-        return dist2 <= (hit_r + self.radius) * (hit_r + self.radius)
+        # Circle vs sprite mask collision detection
+        # Get the sprite surface and mask from the spaceship
+        surf, mask = spaceship.get_rotated_sprite()
+        rect = spaceship.get_sprite_rect(surf)
+        
+        # Check if projectile circle overlaps with the sprite mask
+        # We need to check multiple points around the projectile circle
+        # or use a circle-mask collision approach
+        projectile_rect = pygame.Rect(
+            int(self.pos.x - self.radius),
+            int(self.pos.y - self.radius),
+            self.radius * 2,
+            self.radius * 2
+        )
+        
+        # Check if rects overlap first (broad phase)
+        if not projectile_rect.colliderect(rect):
+            return False
+        
+        # Narrow phase: check mask collision by testing points on projectile circle
+        # Test center and points around the circle perimeter
+        import math
+        test_points = [(0, 0)]  # center
+        steps = 16
+        for i in range(steps):
+            angle = 2 * math.pi * i / steps
+            px = int(self.pos.x + self.radius * math.cos(angle))
+            py = int(self.pos.y + self.radius * math.sin(angle))
+            test_points.append((px, py))
+        
+        for px, py in test_points:
+            # Convert to mask-local coordinates
+            local_x = px - rect.left
+            local_y = py - rect.top
+            
+            # Check bounds and mask
+            if (0 <= local_x < mask.get_size()[0] and
+                0 <= local_y < mask.get_size()[1]):
+                if mask.get_at((local_x, local_y)):
+                    return True
+        
+        return False

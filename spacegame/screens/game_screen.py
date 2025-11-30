@@ -5,10 +5,11 @@ from spacegame.models.units.pirate_frigate import PirateFrigate
 from spacegame.models.units.expedition_ship import ExpeditionShip
 from spacegame.models.units.frigate import Frigate
 from spacegame.models.units.interceptor import Interceptor
+from spacegame.models.units.resource_collector import ResourceCollector
 from spacegame.core.mover import Mover
 from spacegame.core.projectile import Projectile
 from spacegame.ui.hud_ui import HudUI
-from spacegame.ui.ui import Button, draw_triangle, draw_diamond, draw_hex
+from spacegame.ui.ui import Button, draw_triangle, draw_diamond, draw_dalton, draw_hex
 from spacegame.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
@@ -62,9 +63,11 @@ def handle_collisions(player_fleet, enemy_fleet, dt):
         # Player-player separation
         for i, a in enumerate(player_fleet):
             for b in player_fleet[i + 1:]:
-                if isinstance(a, Interceptor) and isinstance(b, Interceptor):
+                # Light crafts push each other
+                # but don't push larger ships
+                if isinstance(a, (Interceptor, ResourceCollector)) and isinstance(b, (Interceptor, ResourceCollector)):
                     Mover.separate_rotated(a, b)
-                elif not isinstance(a, Interceptor) and not isinstance(b, Interceptor):
+                elif not isinstance(a, (Interceptor, ResourceCollector)) and not isinstance(b, (Interceptor, ResourceCollector)):
                     Mover.separate_rotated(a, b)
 
         # Enemy-enemy separation
@@ -175,6 +178,22 @@ def run_game():
                 if not clicked_ui:
                     hangar_interface.close_all_previews()
 
+                # Check for click-to-heal with selected resource collectors
+                if not clicked_ui:
+                    selected_collectors = [s for s in player_fleet if isinstance(s, ResourceCollector) and s.selected]
+                    if selected_collectors:
+                        # Check if clicking on a ship that can be healed (not the collector itself, and not an enemy)
+                        target_ship = None
+                        for ship in player_fleet:
+                            if ship not in selected_collectors and ship.point_inside(event.pos):
+                                target_ship = ship
+                                break
+                        if target_ship:
+                            # Start healing with all selected collectors
+                            for collector in selected_collectors:
+                                collector.start_healing(target_ship)
+                            clicked_ui = True  # Mark as handled
+
                 # Start selection if clicked elsewhere
                 if not clicked_ui:
                     is_selecting = True  # Start drag-selection when the left mouse button is pressed
@@ -205,6 +224,11 @@ def run_game():
                     if s.selected and not getattr(s, "recalling", False)
                 ]
                 if selected_shapes:
+                    # Cancel healing for any selected resource collectors
+                    for shape in selected_shapes:
+                        if isinstance(shape, ResourceCollector):
+                            shape.cancel_healing()
+                    
                     # Calculate the average position (center) of all selected shapes (formation center)
                     center = sum((s.pos for s in selected_shapes), Vector2(0, 0)) / len(selected_shapes)
                     for s in selected_shapes:
@@ -217,13 +241,17 @@ def run_game():
         for s in player_fleet + enemy_fleet:
             s.update_cooldown(dt)
 
+        # --- Update healing for resource collectors ---
+        for collector in [s for s in player_fleet if isinstance(s, ResourceCollector)]:
+            collector.update_healing(dt)
+
         # --- Update movement ---
         for spaceship in player_fleet:
             spaceship.mover.update(dt)
         # --- Handle recalled fighters: fly back to main ship and re-dock ---
         recalled_done = []
         for spaceship in player_fleet:
-            if isinstance(spaceship, Interceptor) and getattr(spaceship, "recalling", False):
+            if isinstance(spaceship, (Interceptor, ResourceCollector)) and getattr(spaceship, "recalling", False):
                 # Always steer toward the main ship
                 spaceship.mover.set_target(main_player.pos)
 
@@ -231,14 +259,13 @@ def run_game():
                 if (spaceship.pos - main_player.pos).length() < 50:
                     recalled_done.append(spaceship)
 
-        for icpt in recalled_done:
-            # Remove from active shapes; Hangar will take care of internal lists.
-            if icpt in player_fleet:
-                player_fleet.remove(icpt)
+        for craft in recalled_done:
+            # Remove from active ships; Hangar will take care of internal lists.
+            if craft in player_fleet:
+                player_fleet.remove(craft)
 
-            # Inform the Hangar that this interceptor has successfully docked
-            # so the corresponding slot becomes ready again.
-            main_player.hangar_system.on_recalled(icpt)
+            # Inform the Hangar that this craft has successfully docked so the corresponding slot becomes ready again.
+            main_player.hangar_system.on_recalled(craft)
         # Enemies: approach to within range, then hold
         for e in enemy_fleet:
             if player_fleet:
@@ -254,6 +281,9 @@ def run_game():
         for p in player_fleet:
             if not enemy_fleet:
                 break
+            # Skip firing if unit has 0 damage (e.g., ResourceCollector)
+            if p.bullet_damage <= 0:
+                continue
             nearest = min(enemy_fleet, key=lambda e: (e.pos - p.pos).length_squared())
             if p.is_target_in_range(nearest) and p.ready_to_fire():
                 dirv = (nearest.pos - p.pos)
@@ -266,6 +296,9 @@ def run_game():
         for e in enemy_fleet:
             if not player_fleet:
                 break
+            # Skip firing if unit has 0 damage (shouldn't happen with enemies, but safe)
+            if e.bullet_damage <= 0:
+                continue
             nearest = min(player_fleet, key=lambda p: (p.pos - e.pos).length_squared())
             if e.is_target_in_range(nearest) and e.ready_to_fire():
                 dirv = (nearest.pos - e.pos)
@@ -281,14 +314,14 @@ def run_game():
 
 
 
-        # Update hangar state for any interceptors that died this frame
-        dead_interceptors = [
+        # Update hangar state for any light crafts that died this frame
+        dead_crafts = [
             s for s in player_fleet
-            if isinstance(s, Interceptor) and s.health <= 0.0
+            if isinstance(s, (Interceptor, ResourceCollector)) and s.health <= 0.0
         ]
-        for icpt in dead_interceptors:
+        for craft in dead_crafts:
             # Notify Hangar so it can mark the pool entry dead and clear any slot / assignment.
-            main_player.hangar_system.on_interceptor_dead(icpt)
+            main_player.hangar_system.on_interceptor_dead(craft)
 
         enemy_fleet = [s for s in enemy_fleet if s.health > 0.0]
         player_fleet = [s for s in player_fleet if s.health > 0.0]
@@ -321,12 +354,23 @@ def run_game():
                     2
                 )
             # triangle over deployed interceptors
-            if isinstance(spaceship, Interceptor) and not getattr(spaceship, "recalling", False):
+            elif isinstance(spaceship, Interceptor) and not getattr(spaceship, "recalling", False):
                     ship_w, ship_h = spaceship.ship_size
                     draw_triangle(
                         screen,
                         (spaceship.pos.x, spaceship.pos.y),
                         ship_w * 1.2,   # Interceptor - relative to its size
+                        (80, 255, 190),
+                        2
+                    )
+            # dalton shape over deployed resource collectors (long end pointing down)
+            elif isinstance(spaceship, ResourceCollector) and not getattr(spaceship, "recalling", False):
+                    ship_w, ship_h = spaceship.ship_size
+                    draw_dalton(
+                        screen,
+                        (spaceship.pos.x, spaceship.pos.y),
+                        ship_w * 1.2,
+                        ship_h * 1.5,   # ResourceCollector - make it taller
                         (80, 255, 190),
                         2
                     )
