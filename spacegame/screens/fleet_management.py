@@ -6,16 +6,17 @@ from spacegame.ui.fleet_management_ui import (
 )
 from spacegame.models.units.expedition_ship import ExpeditionShip
 from spacegame.models.units.frigate import Frigate
-from spacegame.ui.ui import preview_for_unit, draw_health_bar
+from spacegame.ui.ui import preview_for_unit, draw_hex, draw_triangle, draw_dalton, draw_diamond
+from spacegame.ui.fleet_management_ui import tier_to_roman
 from spacegame.config import (
     FPS,
     UI_BG_COLOR, 
     UI_NAV_LINE_COLOR, 
     UI_TITLE_COLOR,
     UI_TOP_BAR_HEIGHT,
-    UI_TAB_HEIGHT,
     UI_TAB_TEXT_SELECTED
     )
+from spacegame.config import UI_ICON_BLUE, UI_ICON_WHITE
 
 
 def _build_hangar_snapshot(main_player):
@@ -67,11 +68,6 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
     title_surf = title_font.render(title_text, True, UI_TITLE_COLOR)
     title_rect = title_surf.get_rect(center=(width // 2, UI_TOP_BAR_HEIGHT // 2 - 22))
 
-    # Nav band (same vertical bounds as internal screen)
-    tabs_y = UI_TOP_BAR_HEIGHT - UI_TAB_HEIGHT - 4
-    nav_top_y = tabs_y - 6
-    nav_bottom_y = tabs_y + UI_TAB_HEIGHT + 6
-
     # Back arrow and close "X" at same height as in internal screen
     nav_center_y = UI_TOP_BAR_HEIGHT // 1.3
 
@@ -98,6 +94,17 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
     circle_radius = fleet_layout.get("circle_radius", 30)
     circle_col_x = mid_center_x
 
+    # vertical offset (pixels) to lower preview shapes and preview images
+    PREVIEW_OFFSET_Y = 60
+
+    # compute a reference Y for ship titles based on the first squad slot
+    # (we'll align expedition and frigate titles to this Y so heights match)
+    first_slot_name_height = label_font.size("M")[1]
+    if fleet_layout.get("circle_rects"):
+        ref_name_y = fleet_layout["circle_rects"][0].top - (first_slot_name_height + 6)
+    else:
+        ref_name_y = ms_rect.top - (first_slot_name_height + 6)
+
     running = True
     while running:
         # ------------- EVENTS -------------
@@ -117,7 +124,29 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                     return "to_game"
 
                 for idx, c_rect in enumerate(circle_rects):
-                    if c_rect.collidepoint(event.pos):
+                    # Build a larger "squad card" hit rect that covers the
+                    # title (drawn above c_rect.top), the tier flag next to it,
+                    # and the visible preview which is drawn lowered by
+                    # PREVIEW_OFFSET_Y. Do NOT shift the card after creation;
+                    # instead compute top/bottom to include both regions.
+                    name_height = label_font.size("M")[1]
+                    # title is drawn at: title_y = c_rect.top - (name_height + 6)
+                    title_y = c_rect.top - (name_height + 6)
+
+                    # preview is drawn at vertical range: (c_rect.top + PREVIEW_OFFSET_Y) .. (c_rect.bottom + PREVIEW_OFFSET_Y)
+                    preview_top = c_rect.top + PREVIEW_OFFSET_Y
+                    preview_bottom = c_rect.bottom + PREVIEW_OFFSET_Y
+
+                    # pad a few pixels above the title and below the preview
+                    pad = 8
+                    card_top = title_y - pad
+                    card_bottom = preview_bottom + pad
+
+                    card_left = c_rect.left - 140
+                    card_right = c_rect.right + 140
+                    card_rect = pygame.Rect(card_left, card_top, card_right - card_left, card_bottom - card_top)
+
+                    if card_rect.collidepoint(event.pos):
                         # Open detailed squad card for this hangar slot.
                         from spacegame.screens.squad_detail import squad_detail_screen
 
@@ -169,22 +198,41 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
         )
 
         # LEFT: expedition ship preview and HP
-        ms_surf = pygame.transform.smoothscale(
-            preview_for_unit("expedition"), (ms_rect.width, ms_rect.height)
-        )
-        screen.blit(ms_surf, ms_rect.topleft)
-        bar_pad = 6
-        bar_h = 6
-        bar_w = ms_rect.width
-        bar_x = ms_rect.left
-        bar_y = ms_rect.bottom + bar_pad
-        draw_health_bar(
-            screen, bar_x, bar_y, bar_w, bar_h, main_player.health, main_player.max_health
-        )
+        # Draw geometric hex behind the expedition preview (lowered)
+        ms_center = (ms_rect.centerx, ms_rect.centery - 125)
+        draw_hex(screen, ms_center, ms_rect.width * 0.9, ms_rect.height * 0.5, (80, 255, 190), 3)
+        ms_surf = pygame.transform.smoothscale(preview_for_unit("expedition"), (ms_rect.width, ms_rect.height))
+        ms_img_rect = ms_surf.get_rect(center=ms_center)
+        screen.blit(ms_surf, ms_img_rect.topleft)
+        # Expedition ship name: left-align above the preview, vertically aligned
+        # to the first squad title (do not change squad title positions)
+        ms_name = getattr(main_player, 'name', 'EXPEDITION SHIP')
+        name_surf = label_font.render(ms_name, True, (220, 220, 255))
+        name_x = ms_rect.left / 1.45
+        name_y = ref_name_y
+        screen.blit(name_surf, (name_x, name_y))
+        # Tier flag drawn to the right of the ship name (same height)
+        try:
+            tier_val = int(main_player.get_tier())
+        except Exception:
+            tier_val = 0
+        flag_w = 22
+        flag_h = 22
+        flag_x = name_x * 3.58
+        flag_y = name_y + (name_surf.get_height() - flag_h) // 2
+        flag_rect = pygame.Rect(flag_x, flag_y, flag_w, flag_h)
+        pygame.draw.rect(screen, UI_ICON_BLUE, flag_rect)
+        tier_text = pygame.font.Font(None, 26).render(tier_to_roman(tier_val), True, UI_ICON_WHITE)
+        tier_text_rect = tier_text.get_rect(center=flag_rect.center)
+        screen.blit(tier_text, tier_text_rect)
 
         # MIDDLE: squad circles (assigned interceptors or empty)
         for i, c_rect in enumerate(circle_rects):
             cx, cy = c_rect.center
+            # reset per-slot name variables so flags align to the correct name
+            name_surf = None
+            name_x = None
+            name_y = None
 
             assigned_id = assignments[i] if 0 <= i < len(assignments) else None
             assigned_entry = (
@@ -196,18 +244,44 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
             if assigned_entry is not None:
                 r = circle_radius - 4
                 size = int(r * 2)
+                # scale squad previews similarly to the frigate preview
+                scale = 1.35
+                scaled = int(size * scale)
                 # choose preview image by unit_type
-                preview_img = preview_for_unit(getattr(assigned_entry, "unit_type"))
-                icpt_img = pygame.transform.smoothscale(preview_img, (size, size))
-                img_rect = icpt_img.get_rect(center=(cx, cy))
+                unit_type = getattr(assigned_entry, "unit_type")
+                # Draw geometric shape behind the preview depending on unit type (lowered, using scaled dims)
+                slot_center = (cx, cy + PREVIEW_OFFSET_Y - 20)
+                if unit_type == 'resource_collector':
+                    # Slightly increase the dalton shape so collectors feel more
+                    # visually prominent behind their preview image.
+                    draw_dalton(screen, slot_center, scaled * 1.25, scaled * 1.65, (80, 255, 190), 2)
+                elif unit_type == 'interceptor':
+                    draw_triangle(screen, slot_center, scaled * 1.2, (80, 255, 190), 2)
+                else:
+                    draw_diamond(screen, slot_center, scaled * 1.2, scaled * 1.2, (80, 255, 190), 2)
+
+                preview_img = preview_for_unit(unit_type)
+                icpt_img = pygame.transform.smoothscale(preview_img, (scaled, scaled))
+                img_rect = icpt_img.get_rect(center=slot_center)
                 screen.blit(icpt_img, img_rect.topleft)
 
-                name_surf = label_font.render(
-                    _entry_name(assigned_entry), True, (220, 220, 255)
-                )
-                name_x = cx - name_surf.get_width() // 2
-                name_y = c_rect.top - 24
+                # Ship name: left-align above the slot
+                name_surf = label_font.render(_entry_name(assigned_entry), True, (220, 220, 255))
+                name_x = c_rect.left - 140
+                name_y = c_rect.top - (name_surf.get_height() + 6)
                 screen.blit(name_surf, (name_x, name_y))
+
+                # Tier icon to the right of the name (same height)
+                tier_val = int(getattr(assigned_entry, 'tier', 0))
+                flag_w = 22
+                flag_h = 22
+                flag_x = name_x * 1.8
+                flag_y = name_y + (name_surf.get_height() - flag_h) // 2
+                flag_rect = pygame.Rect(flag_x, flag_y, flag_w, flag_h)
+                pygame.draw.rect(screen, UI_ICON_BLUE, flag_rect)
+                tier_text = pygame.font.Font(None, 26).render(tier_to_roman(tier_val), True, UI_ICON_WHITE)
+                tier_text_rect = tier_text.get_rect(center=flag_rect.center)
+                screen.blit(tier_text, tier_text_rect)
             else:
                 pygame.draw.circle(
                     screen, (230, 230, 230), (cx, cy), circle_radius, 2
@@ -227,35 +301,61 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
             )
 
             if fighter_alive:
-                hb_w = circle_radius * 2
-                hb_h = 5
-                hb_x = cx - hb_w // 2
-                hb_y = cy + circle_radius + 6
-                draw_health_bar(
-                    screen,
-                    hb_x,
-                    hb_y,
-                    hb_w,
-                    hb_h,
-                    fighter_ship.health,
-                    fighter_ship.max_health,
-                )
+                # Tier icon placed to the right of the name (if present) otherwise align left
+                try:
+                    tier_val = int(fighter_ship.get_tier())
+                except Exception:
+                    tier_val = 0
+                flag_w = 18
+                flag_h = 18
+                # If a name was drawn for this slot, align the flag to the right of it.
+                if name_surf is not None and name_x is not None:
+                    flag_x = name_x + name_surf.get_width() + 6
+                    flag_y = name_y + (name_surf.get_height() - flag_h) // 2
+                else:
+                    # fallback: left-align inside the slot
+                    flag_x = c_rect.left + 6
+                    flag_y = c_rect.top + 3
+                flag_rect = pygame.Rect(flag_x, flag_y, flag_w, flag_h)
+                pygame.draw.rect(screen, UI_ICON_BLUE, flag_rect)
+                tier_text = pygame.font.Font(None, 20).render(tier_to_roman(tier_val), True, UI_ICON_WHITE)
+                tier_text_rect = tier_text.get_rect(center=flag_rect.center)
+                screen.blit(tier_text, tier_text_rect)
 
         if frigates:
             f = frigates[0]
-            fr_img = pygame.transform.smoothscale(
-                preview_for_unit("frigate"), (fr_rect.width, fr_rect.height)
-            )
-            screen.blit(fr_img, fr_rect.topleft)
+            # Draw larger diamond behind frigate preview (rotated) and scale up preview image (lowered)
+            scale = 1.35  # scale factor to make the frigate preview larger
+            fr_center = (fr_rect.centerx, fr_rect.centery - 125)
+            draw_diamond(screen, fr_center, fr_rect.height * scale, fr_rect.width / 1.2 * scale, (80, 255, 190), 3)
+            fr_w = int(fr_rect.width * scale)
+            fr_h = int(fr_rect.height * scale)
+            fr_img = pygame.transform.smoothscale(preview_for_unit("frigate"), (fr_w, fr_h))
+            # center the scaled preview on the lowered center so name/flag positions remain unchanged
+            img_rect = fr_img.get_rect(center=fr_center)
+            screen.blit(fr_img, img_rect.topleft)
 
-            bar_pad = 6
-            bar_h = 6
-            bar_w = fr_rect.width
-            bar_x = fr_rect.left
-            bar_y = fr_rect.bottom + bar_pad
-            draw_health_bar(
-                screen, bar_x, bar_y, bar_w, bar_h, f.health, f.max_health
-            )
+            # Frigate name: left-align above the preview and match the first squad title height
+            fr_name = getattr(f, 'name', 'SCOUTING FRIGATE')
+            name_surf = label_font.render(fr_name, True, (220, 220, 255))
+            name_x = fr_rect.left - 98
+            name_y = ref_name_y
+            screen.blit(name_surf, (name_x, name_y))
+
+            # Tier icon to the right of the frigate name (same height)
+            try:
+                tier_val = int(f.get_tier())
+            except Exception:
+                tier_val = 0
+            flag_w = 22
+            flag_h = 22
+            flag_x = name_x * 1.297
+            flag_y = name_y + (name_surf.get_height() - flag_h) // 2
+            flag_rect = pygame.Rect(flag_x, flag_y, flag_w, flag_h)
+            pygame.draw.rect(screen, UI_ICON_BLUE, flag_rect)
+            tier_text = pygame.font.Font(None, 26).render(tier_to_roman(tier_val), True, UI_ICON_WHITE)
+            tier_text_rect = tier_text.get_rect(center=flag_rect.center)
+            screen.blit(tier_text, tier_text_rect)
         else:
             pygame.draw.rect(screen, (80, 80, 80), fr_rect, border_radius=10)
 

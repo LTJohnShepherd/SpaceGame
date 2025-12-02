@@ -167,7 +167,8 @@ def compute_fleet_preview_layout(width, height):
 
     # Light crafts column (middle)
     circle_radius = 30
-    circle_spacing = 120
+    # the bottom of a preview image and the title of the next squad
+    circle_spacing = 200
     circle_rects = []
     circle_col_x = mid_center_x
     circle_top_y = ROW_CENTER_Y - circle_spacing

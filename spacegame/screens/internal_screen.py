@@ -173,7 +173,7 @@ def internal_screen(main_player, player_fleet):
                     if entry["rect"].collidepoint(mx, my):
                         if entry["label"] == "FLEET CONFIGURATION":
                             from spacegame.screens.fleet_management import (
-                                fleet_management_screen,
+                                fleet_management_screen
                             )
 
                             res = fleet_management_screen(main_player, player_fleet)
@@ -193,6 +193,11 @@ def internal_screen(main_player, player_fleet):
                             if res == "to_game":
                                 return "to_game"
                             # "to_internal" or None: stay in internal screen loop, don't return
+                        if name == "FABRICATION":
+                            from spacegame.screens.fabrication import fabrication_screen
+                            res = fabrication_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
 
         # ---------- DRAW ----------
         screen.fill(UI_BG_COLOR)

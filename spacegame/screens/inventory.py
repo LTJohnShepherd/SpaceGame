@@ -66,7 +66,7 @@ def inventory_screen(main_player, player_fleet):
     close_hit_rect = close_rect.inflate(16, 16)
 
     # ---------- TABS ----------
-    tab_labels = ["STORAGE", "FABRICATION", "REFINING", "BRIDGE"]
+    tab_labels = ["STORAGE", "BRIDGE", "FABRICATION", "REFINING", "INTERNAL MODULES"]
     selected_tab = 0  # INVENTORY selected
     tab_spacing = 16
 
@@ -161,7 +161,17 @@ def inventory_screen(main_player, player_fleet):
                 # Tabs
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
-                        selected_tab = idx
+                        # Open Fabrication when FABRICATION tab clicked
+                        if entry["label"] == "FABRICATION":
+                            from spacegame.screens.fabrication import fabrication_screen
+
+                            res = fabrication_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                            # return focus back to STORAGE tab after closing fabrication
+                            selected_tab = 0
+                        else:
+                            selected_tab = idx
                         break
 
             # Mouse wheel support (pygame 2) and legacy wheel buttons

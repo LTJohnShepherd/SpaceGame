@@ -179,6 +179,20 @@ def run_game():
                 # Then let the hangar UI handle deploy/recall buttons and preview toggles.
                 clicked_ui = hangar_interface.handle_mouse_button_down(event.pos, main_player, player_fleet)
 
+                # If the HUD row was clicked but the handler somehow did not claim the event,
+                # treat clicks inside the HUD area as consumed to avoid accidentally
+                # starting a world selection which would immediately clear the HUD selection.
+                if not clicked_ui:
+                    try:
+                        # determine approximate top of HUD by using the first hangar slot preview y
+                        hud_preview_y = hangar_interface.hangar_slots[0]['preview_position'].y
+                        hud_threshold = int(hud_preview_y - hangar_interface.preview_size * 0.6)
+                        if event.pos[1] >= hud_threshold:
+                            clicked_ui = True
+                    except Exception:
+                        # fallback: if anything goes wrong, keep existing behavior
+                        pass
+
                 if not clicked_ui:
                     hangar_interface.close_all_previews()
 
