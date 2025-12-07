@@ -194,8 +194,8 @@ def internal_screen(main_player, player_fleet):
                                 return "to_game"
                             # "to_internal" or None: stay in internal screen loop, don't return
                         if name == "FABRICATION":
-                            from spacegame.screens.fabrication import fabrication_screen
-                            res = fabrication_screen(main_player, player_fleet)
+                            from spacegame.screens.fabrication_main_screen import fabrication_main_screen
+                            res = fabrication_main_screen(main_player, player_fleet)
                             if res == "to_game":
                                 return "to_game"
 

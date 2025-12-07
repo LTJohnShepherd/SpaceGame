@@ -161,14 +161,23 @@ def inventory_screen(main_player, player_fleet):
                 # Tabs
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
+                        label = entry["label"]
                         # Open Fabrication when FABRICATION tab clicked
-                        if entry["label"] == "FABRICATION":
-                            from spacegame.screens.fabrication import fabrication_screen
+                        if label == "FABRICATION":
+                            from spacegame.screens.fabrication_main_screen import fabrication_main_screen
 
-                            res = fabrication_screen(main_player, player_fleet)
+                            res = fabrication_main_screen(main_player, player_fleet)
                             if res == "to_game":
                                 return "to_game"
                             # return focus back to STORAGE tab after closing fabrication
+                            selected_tab = 0
+                        elif label == "INTERNAL MODULES":
+                            from spacegame.screens.internal_modules_screen import internal_modules_screen
+
+                            res = internal_modules_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                            # after closing, go back to STORAGE tab highlight
                             selected_tab = 0
                         else:
                             selected_tab = idx

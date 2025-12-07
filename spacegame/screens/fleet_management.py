@@ -300,28 +300,6 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                 and fighter_ship in player_fleet
             )
 
-            if fighter_alive:
-                # Tier icon placed to the right of the name (if present) otherwise align left
-                try:
-                    tier_val = int(fighter_ship.get_tier())
-                except Exception:
-                    tier_val = 0
-                flag_w = 18
-                flag_h = 18
-                # If a name was drawn for this slot, align the flag to the right of it.
-                if name_surf is not None and name_x is not None:
-                    flag_x = name_x + name_surf.get_width() + 6
-                    flag_y = name_y + (name_surf.get_height() - flag_h) // 2
-                else:
-                    # fallback: left-align inside the slot
-                    flag_x = c_rect.left + 6
-                    flag_y = c_rect.top + 3
-                flag_rect = pygame.Rect(flag_x, flag_y, flag_w, flag_h)
-                pygame.draw.rect(screen, UI_ICON_BLUE, flag_rect)
-                tier_text = pygame.font.Font(None, 20).render(tier_to_roman(tier_val), True, UI_ICON_WHITE)
-                tier_text_rect = tier_text.get_rect(center=flag_rect.center)
-                screen.blit(tier_text, tier_text_rect)
-
         if frigates:
             f = frigates[0]
             # Draw larger diamond behind frigate preview (rotated) and scale up preview image (lowered)
