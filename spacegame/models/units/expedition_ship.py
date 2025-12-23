@@ -40,7 +40,7 @@ class ExpeditionShip(SpaceUnit):
         )
 
         # update ship size
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
+        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), rarity="common", **kwargs)
         self.base_surf = scaled_sprite
 
         # Combat stats
@@ -72,6 +72,18 @@ class ExpeditionShip(SpaceUnit):
         # Per-section capacity limits for internal modules (persisted on the ship)
         # Order: [left-section, middle-section, right-section]
         self.internal_section_capacity_limits = [170, 220, 170]
+        # Initialize installed internal modules (3 sections: left, middle, right)
+        # This is populated by the internal modules screen but starts empty
+        self.installed_internal_modules = [[], [], []]
+        # Attempt to load saved state (if present). Fail silently.
+        try:
+            from spacegame.core import save as _save
+            try:
+                _save.load_game(self)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     # Notification timing and lifecycle are handled by InventoryManager directly.
 

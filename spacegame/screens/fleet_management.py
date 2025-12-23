@@ -49,7 +49,7 @@ def _entry_is_alive(entry) -> bool:
 def _entry_name(entry) -> str:
     """Return the display name for a hangar pool entry, with a safe fallback."""
     name = getattr(entry, "name", None)
-    return name if name is not None else "Interceptor"
+    return name if name is not None else ""
 
 
 def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
@@ -139,9 +139,6 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                     name_height = label_font.size("M")[1]
                     # title is drawn at: title_y = c_rect.top - (name_height + 6)
                     title_y = c_rect.top - (name_height + 6)
-
-                    # preview is drawn at vertical range: (c_rect.top + PREVIEW_OFFSET_Y) .. (c_rect.bottom + PREVIEW_OFFSET_Y)
-                    preview_top = c_rect.top + PREVIEW_OFFSET_Y
                     preview_bottom = c_rect.bottom + PREVIEW_OFFSET_Y
 
                     # pad a few pixels above the title and below the preview
@@ -302,13 +299,6 @@ def fleet_management_screen(main_player: ExpeditionShip, player_fleet):
                 pygame.draw.line(
                     screen, (230, 230, 230), (cx, cy - 8), (cx, cy + 8), 2
                 )
-
-            fighter_ship = ships[i] if 0 <= i < len(ships) else None
-            fighter_alive = (
-                fighter_ship is not None
-                and getattr(fighter_ship, "health", 0.0) > 0.0
-                and fighter_ship in player_fleet
-            )
 
         if frigates:
             f = frigates[0]

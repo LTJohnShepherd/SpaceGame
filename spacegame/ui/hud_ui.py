@@ -262,7 +262,9 @@ class HudUI:
                 fighter_ship in player_shapes and
                 fighter_ship.health > 0.0
             )
-            if not hangar.slots[i] and not fighter_alive:
+            # Also check if there's an assignment in this slot (persisted after load)
+            has_assignment = (i < len(hangar.assignments) and hangar.assignments[i] is not None)
+            if not hangar.slots[i] and not fighter_alive and not has_assignment:
                 hangar_slot['show_button'] = False
                 continue
 

@@ -13,6 +13,7 @@ from spacegame.config import (
     UI_NAV_LINE_COLOR
     )
 from spacegame.ui.nav_ui import create_tab_entries, draw_tabs
+from spacegame.core.modules_manager import manager as modules_manager
 
 
 def internal_screen(main_player, player_fleet):
@@ -53,6 +54,11 @@ def internal_screen(main_player, player_fleet):
     selected_tab = 1  # INTERNAL initially selected
 
     tab_entries, tabs_y = create_tab_entries(tab_labels, tab_font, width, TOP_BAR_HEIGHT, UI_TAB_HEIGHT)
+    disabled_labels = set()
+    if not modules_manager.get_fabricators():
+        disabled_labels.add("FABRICATION")
+    if not modules_manager.get_refineries():
+        disabled_labels.add("REFINING")
 
     # ---------- SECTION BUTTONS ----------
     section_width = int(width * 0.32)
@@ -125,6 +131,12 @@ def internal_screen(main_player, player_fleet):
 
     running = True
     while running:
+        # Recompute disabled tabs each frame to stay in sync with ModulesManager
+        disabled_labels = set()
+        if not modules_manager.get_fabricators():
+            disabled_labels.add("FABRICATION")
+        if not modules_manager.get_refineries():
+            disabled_labels.add("REFINING")
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -145,7 +157,10 @@ def internal_screen(main_player, player_fleet):
                 # Tabs
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
-                        if entry["label"] == "FLEET CONFIGURATION":
+                        label = entry["label"]
+                        if label in disabled_labels:
+                            break
+                        if label == "FLEET CONFIGURATION":
                             from spacegame.screens.fleet_management import (
                                 fleet_management_screen
                             )
@@ -168,8 +183,19 @@ def internal_screen(main_player, player_fleet):
                                 return "to_game"
                             # "to_internal" or None: stay in internal screen loop, don't return
                         if name == "FABRICATION":
+                            # ignore if disabled
+                            if "FABRICATION" in disabled_labels:
+                                continue
                             from spacegame.screens.fabrication_main_screen import fabrication_main_screen
                             res = fabrication_main_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                        if name == "REFINING":
+                            # ignore if disabled
+                            if "REFINING" in disabled_labels:
+                                continue
+                            from spacegame.screens.refining_main_screen import refining_main_screen
+                            res = refining_main_screen(main_player, player_fleet)
                             if res == "to_game":
                                 return "to_game"
 
@@ -209,11 +235,18 @@ def internal_screen(main_player, player_fleet):
         screen.blit(close_surf, close_rect)
 
         # Tabs (draw using shared nav helper)
-        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font)
+        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font, disabled_labels=disabled_labels)
 
         # Section buttons + larger icon squares with internal geometry
         ICON_BOX_SIZE = 34
         for name, btn in section_buttons:
+            # visually disable buttons when corresponding modules are not equipped
+            if name == "FABRICATION" and "FABRICATION" in disabled_labels:
+                btn.text_color = (140, 140, 140)
+            elif name == "REFINING" and "REFINING" in disabled_labels:
+                btn.text_color = (140, 140, 140)
+            else:
+                btn.text_color = UI_SECTION_TEXT_COLOR
             btn.draw(screen)
 
             icon_box_rect = pygame.Rect(

@@ -52,7 +52,6 @@ class Hangar:
 
         # Persistent pool (data only, not ship instances).
         # The InventoryManager is expected to register this hangar; there
-        # are no fallback saved pools supported. Initialize the pool normally.
         self.pool = self._initialize_pool(interceptor_pool_size, collector_pool_size, bomber_pool_size)
 
         # Track all currently deployed ships from this hangar.

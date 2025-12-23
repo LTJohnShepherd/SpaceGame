@@ -63,3 +63,9 @@ UI_TAB_HEIGHT     = 38
 # ---- Tier flag colors ----
 UI_ICON_BLUE  = (70, 130, 220)
 UI_ICON_WHITE = (240, 240, 255)
+
+# ---- Enemy spawning ----
+# Seconds between spawn waves (float). Set to 0 to disable automatic spawns.
+ENEMY_SPAWN_INTERVAL = 8.0
+# How many enemies to spawn each interval
+ENEMY_SPAWN_COUNT = 2

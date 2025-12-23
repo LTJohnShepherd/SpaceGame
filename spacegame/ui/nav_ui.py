@@ -49,7 +49,7 @@ def create_tab_entries(tab_labels: List[str], tab_font: pygame.font.Font, width:
     return tab_entries, tabs_y
 
 
-def draw_tabs(screen: pygame.Surface, tab_entries: List[dict], selected_tab: int, tabs_y: int, width: int, tab_font: pygame.font.Font) -> Tuple[int, int]:
+def draw_tabs(screen: pygame.Surface, tab_entries: List[dict], selected_tab: int, tabs_y: int, width: int, tab_font: pygame.font.Font, disabled_labels: set | None = None) -> Tuple[int, int]:
     """Draw the tab icons/text and selected underlines.
 
     Returns (nav_top_y, nav_bottom_y).
@@ -61,22 +61,30 @@ def draw_tabs(screen: pygame.Surface, tab_entries: List[dict], selected_tab: int
     ICON_MARGIN = 10
     H_PADDING = 24
 
+    disabled_labels = disabled_labels or set()
     for idx, entry in enumerate(tab_entries):
         rect = entry["rect"]
         is_selected = idx == selected_tab
+        is_disabled = entry.get("label") in disabled_labels
 
         icon_rect = pygame.Rect(0, 0, icon_size, icon_size)
         icon_rect.centery = rect.centery
         icon_rect.left = rect.left + H_PADDING
+        # Icon background: selected / normal / disabled
+        icon_bg = (210, 220, 235) if is_selected else ((150, 165, 180) if is_disabled else (170, 190, 210))
         pygame.draw.rect(
             screen,
-            (210, 220, 235) if is_selected else (170, 190, 210),
+            icon_bg,
             icon_rect,
             border_radius=4,
             width=2,
         )
 
-        text_color = UI_TAB_TEXT_SELECTED if is_selected else UI_TAB_TEXT_COLOR
+        # Disabled tabs use a muted text color
+        if is_disabled:
+            text_color = (140, 150, 160)
+        else:
+            text_color = UI_TAB_TEXT_SELECTED if is_selected else UI_TAB_TEXT_COLOR
         label_surf = tab_font.render(entry["label"], True, text_color)
         label_rect = label_surf.get_rect()
         label_rect.centery = rect.centery

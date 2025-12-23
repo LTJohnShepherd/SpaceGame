@@ -39,7 +39,7 @@ class PlasmaBomber(SpaceUnit):
         except Exception:
             scaled_sprite = sprite
 
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
+        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), rarity="common", **kwargs)
         self.base_surf = scaled_sprite
 
         # id in hangar pool (if any)

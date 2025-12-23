@@ -32,7 +32,7 @@ class ResourceCollector(SpaceUnit):
         scaled_sprite = pygame.transform.smoothscale(sprite, (sprite.get_width() // 24, sprite.get_height() // 24))
 
         # Initialize base visual / collision size from the scaled sprite.
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
+        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), rarity="common", **kwargs)
         self.base_surf = scaled_sprite
 
         # Optional pool identifier assigned by the mothership's Hangar

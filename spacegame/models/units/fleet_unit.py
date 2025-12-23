@@ -36,12 +36,13 @@ class SpaceUnit(ABC):
 
     def __init__(self, start_pos, ship_size=(60, 30), *, color=None, speed=None,
                  rotation_speed=None, is_enemy=False, fire_range=None,
-                 fire_cooldown=None, bullet_damage=None, armor_damage=None):
+                 fire_cooldown=None, bullet_damage=None, armor_damage=None, rarity: str = "common"):
         
         # resolve defaults from class
         self.ship_size = ship_size
         self.color = color if color is not None else self.DEFAULT_COLOR
         self.is_enemy = is_enemy
+        self.rarity = str(rarity).lower()
         self.fire_range = float(fire_range if fire_range is not None else self.DEFAULT_FIRE_RANGE)
         self.fire_cooldown = float(fire_cooldown if fire_cooldown is not None else self.DEFAULT_FIRE_COOLDOWN)
         self.bullet_damage = float(bullet_damage if bullet_damage is not None else self.DEFAULT_BULLET_DAMAGE)

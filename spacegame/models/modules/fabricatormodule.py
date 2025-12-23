@@ -20,6 +20,9 @@ class FabricatorModule(ShipModule):
         # In this game, "module size" is also the capacity this module uses.
         super().__init__(tier=tier, capacity=module_size)
         self.module_size: int = int(module_size)
+        # Fabricator modules are intended for the middle internal section by default
+        # (index 1). This value controls where the UI will allow them to be mounted.
+        self.allowed_sections = [1]
         # Measured in "fabrication time units" (could be minutes / turns etc.)
         self.base_fabrication_time: float = float(base_fabrication_time)
 
@@ -41,8 +44,11 @@ def get_fabricator_modules_for_ship():
     This is used by the internal-modules screen and both Fabricator
     screens so that the number of slots (01, 02, ...) stays in sync.
     """
-    # For now: two identical Fabricator modules in the middle section.
-    return [
-        FabricatorModule(tier=1, module_size=72, base_fabrication_time=1.0),
-        FabricatorModule(tier=1, module_size=72, base_fabrication_time=1.0),
-    ]
+    # Prefer the centralised ModulesManager as the source of truth when available.
+    try:
+        from spacegame.core.modules_manager import manager
+
+        return manager.get_fabricators() or []
+    except Exception:
+        # backward-compatible default for legacy callers
+        return [FabricatorModule(tier=1, module_size=72, base_fabrication_time=1.0)]

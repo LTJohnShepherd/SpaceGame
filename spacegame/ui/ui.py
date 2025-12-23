@@ -91,11 +91,7 @@ def scaled_preview_for_unit(unit_type: str, size: tuple):
     if cached is not None:
         return cached
     base = preview_for_unit(unit_type, default="interceptor")
-    try:
-        surf = pygame.transform.smoothscale(base, (int(size[0]), int(size[1])))
-    except Exception:
-        # fallback to base surface
-        surf = base.copy()
+    surf = pygame.transform.smoothscale(base, (int(size[0]), int(size[1])))
     _SCALED_PREVIEW_CACHE[key] = surf
     return surf
 
@@ -285,8 +281,4 @@ def draw_power_icon(surface, topleft: tuple, size: int = 20, color=(200, 200, 22
     ]
 
     pts = [(x0 + int(px * w), y0 + int(py * h)) for (px, py) in rel]
-    try:
-        pygame.draw.polygon(surface, color, pts)
-    except Exception:
-        # fallback: draw a small circle if polygon failed
-        pygame.draw.circle(surface, color, (x0 + w // 2, y0 + h // 2), max(2, w // 3))
+    pygame.draw.polygon(surface, color, pts)

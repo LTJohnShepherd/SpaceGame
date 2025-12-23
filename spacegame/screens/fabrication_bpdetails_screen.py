@@ -16,6 +16,7 @@ from spacegame.config import (
 )
 from spacegame.core.fabrication import get_fabrication_manager
 from spacegame.ui.nav_ui import create_tab_entries, draw_tabs
+from spacegame.core.modules_manager import manager as modules_manager
 from spacegame.ui.fabrication_ui import (
     generate_slot_rects,
     draw_index_square,
@@ -70,9 +71,15 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
     selected_tab = 2  # FABRICATION selected
 
     tab_entries, tabs_y = create_tab_entries(tab_labels, tab_font, width, TOP_BAR_HEIGHT, UI_TAB_HEIGHT)
+    disabled_labels = set()
+    if not modules_manager.get_fabricators():
+        disabled_labels.add("FABRICATION")
+    if not modules_manager.get_refineries():
+        disabled_labels.add("REFINING")
     # ---------- FABRICATOR MODULE SLOTS (01 / 02 / ...) ----------
     manager = get_fabrication_manager(main_player)
-    fabricator_modules = manager.get_modules()
+    fabricator_modules = manager.get_modules() or []
+    slot_count = max(1, len(fabricator_modules))
 
     selected_fabricator_index = manager.get_selected_index()  # which fabricator slot is currently selected
 
@@ -88,7 +95,7 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
     idx_rect_base = compute_idx_rect_base(card_rect, idx_size=idx_size)
     IDX_V_SPACING = idx_size + 24
     # one rect per equipped fabricator: 01 stays as-is, 02/03/... stacked below it
-    idx_rects: list[pygame.Rect] = generate_slot_rects(idx_rect_base, len(fabricator_modules), IDX_V_SPACING)
+    idx_rects: list[pygame.Rect] = generate_slot_rects(idx_rect_base, slot_count, IDX_V_SPACING)
 
     # ----- BIG CENTER RECT -----
     plus_radius = 120
@@ -137,6 +144,12 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
 
     running = True
     while running:
+        # Recompute disabled tabs each frame to stay in sync with ModulesManager
+        disabled_labels = set()
+        if not modules_manager.get_fabricators():
+            disabled_labels.add("FABRICATION")
+        if not modules_manager.get_refineries():
+            disabled_labels.add("REFINING")
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -158,6 +171,9 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
                         label = entry["label"]
+                        # ignore clicks on disabled tabs
+                        if label in disabled_labels:
+                            break
                         # Open Storage (Inventory) when STORAGE tab clicked
                         if label == "STORAGE":
                             from spacegame.screens.inventory import inventory_screen
@@ -171,7 +187,16 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
                             res = internal_modules_screen(main_player, player_fleet)
                             if res == "to_game":
                                 return "to_game"
+                            if res == "to_internal":
+                                return "to_internal"
                             # after closing, go back to FABRICATION tab highlight
+                            selected_tab = 2
+                        elif label == "REFINING":
+                            from spacegame.screens.refining_main_screen import refining_main_screen
+                            res = refining_main_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                            # after closing, keep focus on FABRICATION tab
                             selected_tab = 2
                         else:
                             selected_tab = idx
@@ -187,11 +212,33 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
                 # ----- BUILD / SPEED UP / CANCEL -----
                 fab_module = manager.get_module(selected_fabricator_index)
 
-                ore_letter = getattr(bp, "required_ore_letter")
-                ore_amount = int(getattr(bp, "required_ore_amount"))
                 inv_mgr = getattr(main_player, 'inventory_manager', None)
-                available_ore = int(inv_mgr.get_amount(ore_letter)) if inv_mgr is not None else 0
-                insufficient_resources = available_ore < ore_amount
+                # Determine insufficient resources compatibility for both
+                # legacy `required_ore_letter` and new `required_resources` mapping.
+                insufficient_resources = False
+                if hasattr(bp, 'required_resources') and isinstance(getattr(bp, 'required_resources'), dict):
+                    # Check every required resource for availability
+                    for letter, amt in bp.required_resources.items():
+                        letter = str(letter)
+                        amt = int(amt)
+                        available = 0
+                        try:
+                            if inv_mgr is not None:
+                                # prefer refined versions for A/B/C if present
+                                if letter in ('A', 'B', 'C') and inv_mgr.get_amount('R' + letter) > 0:
+                                    available = int(inv_mgr.get_amount('R' + letter))
+                                else:
+                                    available = int(inv_mgr.get_amount(letter))
+                        except Exception:
+                            available = 0
+                        if available < amt:
+                            insufficient_resources = True
+                            break
+                else:
+                    ore_letter = getattr(bp, 'required_ore_letter', None)
+                    ore_amount = int(getattr(bp, 'required_ore_amount', 0))
+                    available_ore = int(inv_mgr.get_amount(ore_letter)) if (inv_mgr is not None and ore_letter is not None) else 0
+                    insufficient_resources = available_ore < ore_amount
 
                 status = manager.get_status(selected_fabricator_index)
                 total_ms = int(status.get("total_ms", 0))
@@ -209,7 +256,7 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
                     continue
 
                 # BUILD (start fabrication)
-                if (not is_fabricating) and (not insufficient_resources) and build_btn_rect.collidepoint(mx, my):
+                if (not is_fabricating) and (not insufficient_resources) and fab_module is not None and build_btn_rect.collidepoint(mx, my):
                     manager.start_fabrication(selected_fabricator_index, bp, main_player)
                     continue
 
@@ -250,7 +297,7 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
         screen.blit(close_surf, close_rect)
 
         # Tabs (draw using shared nav helper)
-        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font)
+        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font, disabled_labels=disabled_labels)
 
         # ---------- MAIN CONTENT (fabrication visual) ----------
         content_top = nav_bottom_y + 24  # same as used in card_rect
@@ -270,7 +317,7 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
             )
 
         # ----- shared fabrication timer/progress (per fabricator module) -----
-        fab_module = fabricator_modules[selected_fabricator_index]
+        fab_module = fabricator_modules[selected_fabricator_index] if selected_fabricator_index < len(fabricator_modules) else None
         # Display true fabrication time as blueprint base time multiplied
         # by the fabricator module's base_fabrication_time factor.
         blueprint_time = float(getattr(bp, "base_fabrication_time", 0))
@@ -386,34 +433,54 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
         stat_x = details_x
         stat_y = dy + 12
 
-        # Statistics derived from the unit this blueprint produces (Tier = bp.tier)
-        # Default values (in case something goes wrong)
-        damage_to_hull = 0
-        damage_to_armor = 0
-        hull = 0
-        speed = 0
+        # Choose stats depending on blueprint type. For refinery blueprints,
+        # show base refinery module stats; otherwise show unit-derived stats.
+        stat_rows = []
+        try:
+            from spacegame.models.blueprints.refineryblueprint import BPRefinery
+            from spacegame.models.modules.refinerymodule import RefineryModule
 
-        if bp is not None:
-            try:
-                unit_cls = getattr(bp, "unit_class", None)
-                tier = getattr(bp, "tier", 0)
-                if unit_cls is not None:
-                    # Build a temporary ship instance to read its stats
-                    unit = unit_cls((0, 0), tier=tier)
-                    damage_to_hull = getattr(unit, "bullet_damage", 0)
-                    damage_to_armor = getattr(unit, "armor_damage", 0)
-                    hull = getattr(unit, "max_health", getattr(unit, "health", 0))
-                    mover = getattr(unit, "mover", None)
-                    speed = getattr(mover, "speed", getattr(unit, "speed", 0))
-            except Exception:
-                pass
+            if isinstance(bp, BPRefinery):
+                # instantiate a representative refinery module to read its stats
+                rmod = RefineryModule(tier=getattr(bp, 'tier', 1))
+                module_size = getattr(rmod, 'module_size', 0)
+                base_refinement_time = getattr(rmod, 'base_refinement_time', 0.0)
+                standard_refinement_time_s = getattr(rmod, 'standard_refinement_time_s', 0.0)
+                stat_rows = [
+                    ("Module Size:", str(module_size)),
+                    ("Base Refinement Time:", str(base_refinement_time)),
+                ]
+            else:
+                # Statistics derived from the unit this blueprint produces (Tier = bp.tier)
+                damage_to_hull = 0
+                damage_to_armor = 0
+                hull = 0
+                speed = 0
 
-        stat_rows = [
-            ("Damage to Hull:",  str(int(damage_to_hull))),
-            ("Damage to Armor:", str(int(damage_to_armor))),
-            ("Hull:",            str(int(hull))),
-            ("Speed:",           str(int(speed))),
-        ]
+                if bp is not None:
+                    try:
+                        unit_cls = getattr(bp, "unit_class", None)
+                        tier = getattr(bp, "tier", 0)
+                        if unit_cls is not None:
+                            # Build a temporary ship instance to read its stats
+                            unit = unit_cls((0, 0), tier=tier)
+                            damage_to_hull = getattr(unit, "bullet_damage", 0)
+                            damage_to_armor = getattr(unit, "armor_damage", 0)
+                            hull = getattr(unit, "max_health", getattr(unit, "health", 0))
+                            mover = getattr(unit, "mover", None)
+                            speed = getattr(mover, "speed", getattr(unit, "speed", 0))
+                    except Exception:
+                        pass
+
+                stat_rows = [
+                    ("Damage to Hull:",  str(int(damage_to_hull))),
+                    ("Damage to Armor:", str(int(damage_to_armor))),
+                    ("Hull:",            str(int(hull))),
+                    ("Speed:",           str(int(speed))),
+                ]
+        except Exception:
+            # Fallback generic stat
+            stat_rows = [("Module:", "N/A")] 
 
         for label_text, value_text in stat_rows:
             lbl = stat_label_font.render(label_text, True, UI_SECTION_TEXT_COLOR)
@@ -494,17 +561,38 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
                 except Exception:
                     img = None
 
-            # Fallback to blueprint preview filename if unit preview not available
+            # Fallback to a more specific preview: if this is a Refinery blueprint,
+            # show the actual module preview image; otherwise fall back to blueprint preview.
+            if img is None and bp is not None:
+                try:
+                    from spacegame.models.blueprints.refineryblueprint import BPRefinery
+                    from spacegame.models.modules.refinerymodule import RefineryModule
+                    from spacegame.models.blueprints.fabricatorblueprint import BPFabricator
+                    from spacegame.models.modules.fabricatormodule import FabricatorModule
+
+                    if isinstance(bp, BPRefinery):
+                        rmod = RefineryModule(tier=getattr(bp, 'tier', 1))
+                        filename = getattr(rmod, 'preview_filename', None)
+                        if filename:
+                            try:
+                                img = pygame.image.load(PREVIEWS_DIR + "/" + filename).convert_alpha()
+                            except Exception:
+                                img = None
+                    elif isinstance(bp, BPFabricator):
+                        rmod = FabricatorModule(tier=getattr(bp, 'tier', 1))
+                        filename = getattr(rmod, 'preview_filename', None)
+                        if filename:
+                            try:
+                                img = pygame.image.load(PREVIEWS_DIR + "/" + filename).convert_alpha()
+                            except Exception:
+                                img = None
+                except Exception:
+                    # non-refinery blueprints or import issues fall back to blueprint preview
+                    img = img
+
             if img is None and bp is not None and hasattr(bp, 'preview_filename'):
                 try:
                     img = pygame.image.load(PREVIEWS_DIR + "/" + bp.preview_filename).convert_alpha()
-                except Exception:
-                    img = None
-
-            # Final fallback to ore preview image (keeps previous behaviour)
-            if img is None:
-                try:
-                    img = OREM_PREVIEW_IMG
                 except Exception:
                     img = None
 
@@ -516,8 +604,22 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
 
                 if max_w > 0 and max_h > 0:
                     try:
-                        scale = min(max_w / img.get_width(), max_h / img.get_height(), 1.0)
-                        new_size = (int(img.get_width() * scale), int(img.get_height() * scale))
+                        # Allow upscaling for Fabricator blueprints so their preview
+                        # fills the same visual area as refinery previews.
+                        allow_upscale = False
+                        try:
+                            from spacegame.models.blueprints.fabricatorblueprint import BPFabricator
+                            if isinstance(bp, BPFabricator):
+                                allow_upscale = True
+                        except Exception:
+                            allow_upscale = False
+
+                        if allow_upscale:
+                            scale = min(max_w / img.get_width(), max_h / img.get_height())
+                        else:
+                            scale = min(max_w / img.get_width(), max_h / img.get_height(), 1.0)
+
+                        new_size = (max(1, int(img.get_width() * scale)), max(1, int(img.get_height() * scale)))
                         img = pygame.transform.smoothscale(img, new_size)
                     except Exception:
                         pass
@@ -530,16 +632,51 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
             # If anything goes wrong, don't crash the screen; just skip preview
             pass
 
-                # ---------- PRODUCTION DETAILS (RIGHT) ----------
-        ore_letter = getattr(bp, "required_ore_letter")
-        ore_amount = int(getattr(bp, "required_ore_amount"))
-        ore_tier = int(getattr(bp, "required_ore_tier"))
+        # ---------- PRODUCTION DETAILS (RIGHT) ----------
         inv_mgr = getattr(main_player, 'inventory_manager', None)
-        available_ore = int(inv_mgr.get_amount(ore_letter)) if inv_mgr is not None else 0
-        insufficient_resources = available_ore < ore_amount
+
+        # Build a list of (letter, amount, tier, available) tuples supporting
+        # either the legacy single-field blueprint attributes or the newer
+        # `required_resources` mapping.
+        resources = []
+        if hasattr(bp, 'required_resources') and isinstance(getattr(bp, 'required_resources'), dict):
+            for letter, amt in bp.required_resources.items():
+                letter = str(letter)
+                amt = int(amt)
+                # default to blueprint tier if no specific per-resource tier exists
+                # Raw ore 'M' should be tier 0 (unrefined), so handle specially
+                if letter == 'M':
+                    tier = int(getattr(bp, 'required_ore_tier', 0))
+                else:
+                    tier = int(getattr(bp, 'tier', getattr(bp, 'required_ore_tier', 1)))
+                # availability check: prefer refined key for A/B/C if present
+                available = 0
+                try:
+                    if inv_mgr is not None:
+                        if letter in ('A', 'B', 'C') and inv_mgr.get_amount('R' + letter) > 0:
+                            available = int(inv_mgr.get_amount('R' + letter))
+                        else:
+                            available = int(inv_mgr.get_amount(letter))
+                except Exception:
+                    available = 0
+                resources.append((letter, amt, tier, available))
+        else:
+            ore_letter = getattr(bp, 'required_ore_letter', None)
+            if ore_letter is not None:
+                ore_amount = int(getattr(bp, 'required_ore_amount', 0))
+                ore_tier = int(getattr(bp, 'required_ore_tier', getattr(bp, 'tier', 1)))
+                if ore_letter == 'M':
+                    ore_tier = int(getattr(bp, 'required_ore_tier', 0))
+                available = 0
+                try:
+                    if inv_mgr is not None:
+                        available = int(inv_mgr.get_amount(ore_letter))
+                except Exception:
+                    available = 0
+                resources.append((ore_letter, ore_amount, ore_tier, available))
 
         # header
-        prod_surf = meta_font.render("PRODUCTION DETAILS", True, (160, 180, 210))
+        prod_surf = meta_font.render('PRODUCTION DETAILS', True, (160, 180, 210))
         prod_rect = prod_surf.get_rect()
         prod_rect.left = right_rect.left + 16
         prod_rect.centery = details_y
@@ -551,51 +688,90 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
             # ----- IDLE: REQUIREMENTS + TIME + BUILD / INSUFFICIENT -----
 
             # "REQUIREMENTS"
-            req_surf = name_font.render("REQUIREMENTS", True, UI_SECTION_TEXT_COLOR)
+            req_surf = name_font.render('REQUIREMENTS', True, UI_SECTION_TEXT_COLOR)
             req_rect = req_surf.get_rect()
             req_rect.left = right_rect.left + 16
             req_rect.centery = module_title_rect.centery
             screen.blit(req_surf, req_rect)
-            row_y = req_rect.bottom + 28
 
-            # ore preview image
+            # layout constants for rows
+            row_start_y = req_rect.bottom + 28
             ore_size = 40
-            ore_surf = pygame.transform.smoothscale(ore_preview_img, (ore_size, ore_size))
-            ore_rect = ore_surf.get_rect()
-            ore_rect.left = right_rect.left + 16
-            ore_rect.centery = row_y
-            screen.blit(ore_surf, ore_rect)
+            row_spacing = 5
 
-            # ore tier flag box
-            flag_w = 70
-            flag_h = 24
-            flag_rect = pygame.Rect(0, 0, flag_w, flag_h)
-            flag_rect.left = ore_rect.right + 12
-            flag_rect.centery = ore_rect.centery
-            draw_tier_icon(screen, flag_rect, ore_tier)
-            pygame.draw.rect(screen, UI_NAV_LINE_COLOR, flag_rect, width=2)
+            overall_insufficient = False
+            last_row_bottom = row_start_y
 
-            flag_text = f"{ore_letter}"
-            flag_surf = stat_font.render(flag_text, True, UI_SECTION_TEXT_COLOR)
-            flag_text_rect = flag_surf.get_rect(center=flag_rect.center)
-            flag_text_rect.x -= 11
-            screen.blit(flag_surf, flag_text_rect)
+            for i, (letter, amt, tier, available) in enumerate(resources):
+                row_y = row_start_y + i * (ore_size + row_spacing)
 
-            # AVAILABLE / REQUIRED
-            avail_text = f"{available_ore} / {ore_amount}"
-            avail_color = UI_SECTION_TEXT_COLOR if not insufficient_resources else (220, 60, 60)
-            avail_surf = stat_font.render(avail_text, True, avail_color)
-            avail_rect = avail_surf.get_rect()
-            avail_rect.right = right_rect.right - 20
-            avail_rect.centery = ore_rect.centery
-            screen.blit(avail_surf, avail_rect)
+                # preview image for this resource
+                if letter == 'M':
+                    try:
+                        ore_surf = pygame.transform.smoothscale(ore_preview_img, (ore_size, ore_size))
+                    except Exception:
+                        ore_surf = pygame.Surface((ore_size, ore_size))
+                else:
+                    # try refined preview (respecting tier) then fall back to ore preview
+                    preview_filename = f"RUIngot{letter}T{tier}.png"
+                    try:
+                        loaded = pygame.image.load(PREVIEWS_DIR + '/' + preview_filename).convert_alpha()
+                        ore_surf = pygame.transform.smoothscale(loaded, (ore_size, ore_size))
+                    except Exception:
+                        try:
+                            ore_surf = pygame.transform.smoothscale(ore_preview_img, (ore_size, ore_size))
+                        except Exception:
+                            ore_surf = pygame.Surface((ore_size, ore_size))
 
-            # underline
-            line_y = ore_rect.bottom
-            pygame.draw.line(screen, UI_NAV_LINE_COLOR, (ore_rect.left, line_y), (avail_rect.right, line_y), 1)
+                ore_rect = ore_surf.get_rect()
+                ore_rect.left = right_rect.left + 16
+                ore_rect.centery = row_y
+                screen.blit(ore_surf, ore_rect)
+
+                # ore tier flag box
+                flag_w = 70
+                flag_h = 24
+                flag_rect = pygame.Rect(0, 0, flag_w, flag_h)
+                flag_rect.left = ore_rect.right + 12
+                flag_rect.centery = ore_rect.centery
+                draw_tier_icon(screen, flag_rect, tier)
+                pygame.draw.rect(screen, UI_NAV_LINE_COLOR, flag_rect, width=2)
+
+                flag_text = f"{letter}"
+                flag_surf = stat_font.render(flag_text, True, UI_SECTION_TEXT_COLOR)
+                flag_text_rect = flag_surf.get_rect(center=flag_rect.center)
+                flag_text_rect.x -= 11
+                screen.blit(flag_surf, flag_text_rect)
+
+                # AVAILABLE / REQUIRED
+                avail_text = f"{available} / {amt}"
+                insufficient = available < amt
+                if insufficient:
+                    overall_insufficient = True
+                avail_color = UI_SECTION_TEXT_COLOR if not insufficient else (220, 60, 60)
+                avail_surf = stat_font.render(avail_text, True, avail_color)
+                avail_rect = avail_surf.get_rect()
+                avail_rect.right = right_rect.right - 20
+                avail_rect.centery = ore_rect.centery
+                screen.blit(avail_surf, avail_rect)
+
+                # underline for this row
+                line_y = ore_rect.bottom
+                pygame.draw.line(screen, UI_NAV_LINE_COLOR, (ore_rect.left, line_y), (avail_rect.right, line_y), 1)
+
+                last_row_bottom = ore_rect.bottom
+
+            # set insufficient_resources based on any resource shortfall
+            insufficient_resources = overall_insufficient
 
             # --- TIME ROW (uses remaining_s, so it will match the shared timer) ---
-            time_row_y = ore_rect.bottom + 26
+            # ensure fallback rects exist if resources was empty
+            if not resources:
+                ore_rect = pygame.Rect(right_rect.left + 16, row_start_y - ore_size // 2, ore_size, ore_size)
+                flag_rect = pygame.Rect(ore_rect.right + 12, ore_rect.centery - 12, 70, 24)
+                avail_rect = pygame.Rect(right_rect.right - 20 - 30, ore_rect.centery - 10, 30, 20)
+
+            time_row_y = last_row_bottom + 26
 
             # clock icon
             clock_radius = 16
@@ -614,12 +790,18 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
             time_box_rect.left = flag_rect.left
             time_box_rect.centery = time_row_y
             pygame.draw.rect(screen, UI_ICON_BLUE, time_box_rect)
-            time_label_surf = stat_font.render("TIME", True, (255, 255, 255))
+            time_label_surf = stat_font.render("TIME", True, UI_SECTION_TEXT_COLOR)
             time_label_rect = time_label_surf.get_rect(center=time_box_rect.center)
             screen.blit(time_label_surf, time_label_rect)
 
-            # text: total/remaining time (seconds)
-            time_text = f"{remaining_s}s"
+            # text: show total blueprint fabrication time (not remaining)
+            total_time_s = int(base_time_s)
+            if total_time_s >= 60:
+                minutes = total_time_s // 60
+                seconds = total_time_s % 60
+                time_text = f"{minutes:02d}:{seconds:02d}"
+            else:
+                time_text = f"{total_time_s}s"
             time_surf = stat_font.render(time_text, True, UI_SECTION_TEXT_COLOR)
             time_rect = time_surf.get_rect()
             time_rect.centery = time_row_y
@@ -686,7 +868,7 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
             seconds = remaining_s % 60
             time_str = f"{minutes:02d}:{seconds:02d}"
             time_font = pygame.font.Font(None, 42)
-            time_surf = time_font.render(time_str, True, (255, 255, 255))
+            time_surf = time_font.render(time_str, True, UI_SECTION_TEXT_COLOR)
             time_rect = time_surf.get_rect()
             time_rect.topleft = (right_rect.left + 10, prod_rect.bottom + 6)
             screen.blit(time_surf, time_rect)
@@ -694,7 +876,7 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
             # percent at top-right
             pct = int(fabrication_progress * 100)
             pct_text = f"{pct} %"
-            pct_surf = time_font.render(pct_text, True, (255, 255, 255))
+            pct_surf = time_font.render(pct_text, True, UI_SECTION_TEXT_COLOR)
             pct_rect = pct_surf.get_rect()
             pct_rect.topright = (right_rect.right - 10, time_rect.top)
             screen.blit(pct_surf, pct_rect)
@@ -717,14 +899,14 @@ def fabrication_bpdetails_screen(main_player, player_fleet, selected_fabricator_
             # SPEED UP button (grey)
             pygame.draw.rect(screen, (40, 60, 90), speed_btn_rect)
             pygame.draw.rect(screen, UI_NAV_LINE_COLOR, speed_btn_rect, 2)
-            speed_surf = btn_font.render("SPEED UP", True, (255, 255, 255))
+            speed_surf = btn_font.render("SPEED UP", True, UI_SECTION_TEXT_COLOR)
             speed_rect = speed_surf.get_rect(center=speed_btn_rect.center)
             screen.blit(speed_surf, speed_rect)
 
             # CANCEL button (bottom red)
             cancel_bg = (210, 40, 40)
             pygame.draw.rect(screen, cancel_bg, build_btn_rect)
-            cancel_surf = btn_font.render("CANCEL", True, (255, 255, 255))
+            cancel_surf = btn_font.render("CANCEL", True, UI_SECTION_TEXT_COLOR)
             cancel_rect = cancel_surf.get_rect(center=build_btn_rect.center)
             screen.blit(cancel_surf, cancel_rect)
 

@@ -24,6 +24,21 @@ class InventoryManager:
         # Placeholder for hangar integration; hangar instance can register itself
         # and the inventory manager will forward hangar modifications directly.
         self.hangar = None
+        # Non-ore items stored as objects (e.g. unequipped modules)
+        # Stored as a simple list of module instances.
+        self.modules: List[object] = []
+
+    def _trigger_autosave(self) -> None:
+        """Attempt to save owner state; failures are swallowed to avoid crashes."""
+        try:
+            # import here to avoid module-level cycles
+            from spacegame.core import save as _save
+            try:
+                _save.save_game(self.owner)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     # ---- Inventory ops ----
     def get_amount(self, ore_letter: str) -> int:
@@ -31,6 +46,10 @@ class InventoryManager:
 
     def set_amount(self, ore_letter: str, amount: int) -> None:
         self.inventory[str(ore_letter)] = int(amount)
+        try:
+            self._trigger_autosave()
+        except Exception:
+            pass
 
     def add_resource(self, ore_letter: str, amount: int, preview: Optional[str] = None) -> None:
         """Add `amount` of resource `ore_letter` to inventory and emit a notification.
@@ -53,6 +72,10 @@ class InventoryManager:
         if preview:
             notif['preview'] = preview
         self.notifications.append(notif)
+        try:
+            self._trigger_autosave()
+        except Exception:
+            pass
 
     def consume_resource(self, ore_letter: str, amount: int) -> bool:
         """Attempt to consume `amount` of `ore_letter`. Returns True if successful."""
@@ -62,6 +85,10 @@ class InventoryManager:
         if have < amount:
             return False
         self.inventory[str(ore_letter)] = have - int(amount)
+        try:
+            self._trigger_autosave()
+        except Exception:
+            pass
         return True
 
     # ---- Generic item ops (non-ore items) ----
@@ -71,6 +98,71 @@ class InventoryManager:
             return
         k = str(key)
         self.inventory[k] = int(self.inventory.get(k, 0)) + int(amount)
+        try:
+            self._trigger_autosave()
+        except Exception:
+            pass
+
+    # ---- Module list ops ----
+    def add_module(self, module_obj) -> None:
+        """Add a module instance to the unequipped modules list."""
+        if module_obj is None:
+            return
+        self.modules.append(module_obj)
+        try:
+            self._trigger_autosave()
+        except Exception:
+            pass
+
+    def remove_module(self, module_obj) -> bool:
+        """Remove a module instance from the unequipped modules list. Returns True if removed."""
+        # Prefer exact identity removal
+        try:
+            self.modules.remove(module_obj)
+            try:
+                self._trigger_autosave()
+            except Exception:
+                pass
+            return True
+        except ValueError:
+            # Fallback: try to remove a module that matches by type and a set
+            # of likely identifying attributes (name, tier, capacity/module_size).
+            try:
+                for m in list(self.modules):
+                    try:
+                        if type(m) is type(module_obj):
+                            # compare a number of common attributes if present
+                            same_tier = getattr(m, 'tier', None) == getattr(module_obj, 'tier', None)
+                            same_capacity = (
+                                getattr(m, 'capacity', None) == getattr(module_obj, 'capacity', None)
+                                or getattr(m, 'module_size', None) == getattr(module_obj, 'module_size', None)
+                            )
+                            same_name = False
+                            try:
+                                name_m = getattr(m, 'name', None)
+                                name_o = getattr(module_obj, 'name', None)
+                                if name_m is not None and name_o is not None:
+                                    same_name = str(name_m) == str(name_o)
+                            except Exception:
+                                same_name = False
+
+                            # Accept a match if name and tier match, or tier+capacity match
+                            if (same_name and same_tier) or (same_tier and same_capacity):
+                                self.modules.remove(m)
+                                try:
+                                    self._trigger_autosave()
+                                except Exception:
+                                    pass
+                                return True
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            return False
+
+    def get_modules(self) -> List[object]:
+        """Return a shallow copy of unequipped module instances."""
+        return list(self.modules)
 
     # ---- Notifications ----
     def add_notification(self, notif: Dict) -> None:
@@ -115,6 +207,10 @@ class InventoryManager:
         # Append directly to the hangar pool; let any higher-level persistence
         # be handled by the owning systems.
         self.hangar.pool.append(entry)
+        try:
+            self._trigger_autosave()
+        except Exception:
+            pass
 
     def get_hangar_pool(self):
         if self.hangar is None:

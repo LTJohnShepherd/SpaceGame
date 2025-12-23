@@ -15,7 +15,7 @@ from spacegame.config import (
     PREVIEWS_DIR,
 )
 from spacegame.ui.fleet_management_ui import draw_tier_icon
-from spacegame.models.modules.fabricatormodule import FabricatorModule
+from spacegame.core.modules_manager import manager as modules_manager
 from spacegame.ui.nav_ui import create_tab_entries, draw_tabs
 
 
@@ -62,15 +62,28 @@ def internal_modules_screen(main_player, player_fleet):
     selected_tab = 4  # INTERNAL MODULES selected
 
     tab_entries, tabs_y = create_tab_entries(tab_labels, tab_font, width, TOP_BAR_HEIGHT, UI_TAB_HEIGHT)
+    disabled_labels = set()
+    try:
+        
+
+        if not modules_manager.get_fabricators():
+            disabled_labels.add("FABRICATION")
+        if not modules_manager.get_refineries():
+            disabled_labels.add("REFINING")
+    except Exception:
+        pass
+
+    if 0 <= selected_tab < len(tab_entries) and tab_entries[selected_tab]["label"] in disabled_labels:
+        for i, e in enumerate(tab_entries):
+            if e["label"] not in disabled_labels:
+                selected_tab = i
+                break
 
     # ---------- MODULE DATA ----------
-    SECTION_MODULES = [
-        [],
-        [
-            FabricatorModule(tier=1, module_size=72, base_fabrication_time=1.0)
-        ],
-        [],
-    ]
+    # Use the centralised ModulesManager as the source of truth for equipped modules
+    SECTION_MODULES = modules_manager.get_internal_sections()
+
+    # Fabrication/Refining managers read from ModulesManager dynamically; no sync required
 
     # Capacity limits are persisted on the player's ExpeditionShip so they
     # survive navigation between screens. Fall back to sensible defaults
@@ -103,6 +116,22 @@ def internal_modules_screen(main_player, player_fleet):
 
     while running:
         clock.tick(60)
+
+        # Recompute disabled tabs and sections each frame so UI stays in sync
+        disabled_labels = set()
+        if not modules_manager.get_fabricators():
+            disabled_labels.add("FABRICATION")
+        if not modules_manager.get_refineries():
+            disabled_labels.add("REFINING")
+        # ensure selected_tab isn't disabled
+        if 0 <= selected_tab < len(tab_entries) and tab_entries[selected_tab]["label"] in disabled_labels:
+            for i, e in enumerate(tab_entries):
+                if e["label"] not in disabled_labels:
+                    selected_tab = i
+                    break
+
+        # Always read the authoritative sections from the central manager
+        SECTION_MODULES = modules_manager.get_internal_sections()
 
         # ---------- STATIC LAYOUT THAT DEPENDS ON NAV POSITION ----------
         nav_top_y = tabs_y - 6
@@ -158,12 +187,19 @@ def internal_modules_screen(main_player, player_fleet):
                 sys.exit()
 
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                # If Fabrication/Refining are disabled, signal to skip
+                # back to the broader Internal screen instead of returning
+                # to a now-inaccessible main screen.
+                if "FABRICATION" in disabled_labels or "REFINING" in disabled_labels:
+                    return "to_internal"
                 return
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
 
                 if back_arrow_rect.collidepoint(mx, my):
+                    if "FABRICATION" in disabled_labels or "REFINING" in disabled_labels:
+                        return "to_internal"
                     return
 
                 if close_hit_rect.collidepoint(mx, my):
@@ -173,6 +209,9 @@ def internal_modules_screen(main_player, player_fleet):
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
                         label = entry["label"]
+                        # ignore clicks on disabled tabs
+                        if label in disabled_labels:
+                            break
                         if label == "STORAGE":
                             from spacegame.screens.inventory import inventory_screen
 
@@ -187,6 +226,13 @@ def internal_modules_screen(main_player, player_fleet):
                             if res == "to_game":
                                 return "to_game"
                             selected_tab = 2
+                        elif label == "REFINING":
+                            from spacegame.screens.refining_main_screen import refining_main_screen
+
+                            res = refining_main_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                            selected_tab = 3
                         elif label == "INTERNAL MODULES":
                             selected_tab = 4
                         else:
@@ -201,8 +247,107 @@ def internal_modules_screen(main_player, player_fleet):
 
                 # Mount module button (no gameplay logic yet)
                 if mount_btn_rect.collidepoint(mx, my):
-                    # Placeholder: in a real game this would open a module‑selection dialog.
-                    pass
+                    # Open the module selection screen and allow the player to pick
+                    # a module for the currently selected section. If a module is
+                    # returned, append it to the SECTION_MODULES for that section.
+                    from spacegame.screens.module_selection_screen import module_selection_screen
+
+                    picked = module_selection_screen(main_player, player_fleet, selected_section, installed_sections=SECTION_MODULES)
+                    if picked is None:
+                        # user cancelled or closed the selection screen
+                        pass
+                    elif picked == "to_game":
+                        return "to_game"
+                    else:
+                        # `module_selection_screen` returns either a module or
+                        # a (module, section_index) tuple. Support both forms
+                        # for backwards-compatibility.
+                        target_section = selected_section
+                        picked_module = picked
+                        try:
+                            if isinstance(picked, tuple) and len(picked) >= 2:
+                                picked_module, target_section = picked[0], int(picked[1])
+                        except Exception:
+                            picked_module = picked
+
+                        # If the module came from the player's inventory, try to remove
+                        # it first from the unequipped modules list so it no longer
+                        # appears there.
+                        try:
+                            inv_mgr = getattr(main_player, 'inventory_manager', None)
+                            if inv_mgr is not None and hasattr(inv_mgr, 'remove_module'):
+                                try:
+                                    inv_mgr.remove_module(picked_module)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        # add the chosen module to the central modules manager
+                        try:
+                            modules_manager.install_module(target_section, picked_module)
+                        except Exception:
+                            pass
+                        else:
+                            # update local view immediately so the UI reflects changes
+                            try:
+                                SECTION_MODULES = modules_manager.get_internal_sections()
+                                current_modules = SECTION_MODULES[selected_section]
+                                card_rects = layout_rects(len(current_modules), cards_top_y, cards_left_start)
+                            except Exception:
+                                pass
+                        # Persist compatibility attribute on the player object
+                        try:
+                            setattr(main_player, 'installed_internal_modules', modules_manager.get_internal_sections())
+                        except Exception:
+                            pass
+
+                        # Trigger autosave via InventoryManager if available
+                        try:
+                            inv_mgr = getattr(main_player, 'inventory_manager', None)
+                            if inv_mgr is not None and hasattr(inv_mgr, '_trigger_autosave'):
+                                try:
+                                    inv_mgr._trigger_autosave()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        # No manager sync required; Fabrication/Refining managers
+                        # read from the central ModulesManager at runtime.
+
+                # Click on a module card should open the module details screen.
+                # The details screen will return a section index when the user
+                # clicks one of its section selector buttons; treat that as a
+                # navigation hint and set the selected_section accordingly.
+                for idx, r in enumerate(card_rects):
+                    if r.collidepoint(mx, my):
+                        from spacegame.screens.module_details_screen import module_details_screen
+
+                        # Pass the clicked module to the details screen so it can
+                        # present module-specific info. If `idx` is out-of-range
+                        # for `current_modules`, fall back to None.
+                        selected_mod = None
+                        try:
+                            selected_mod = current_modules[idx]
+                        except Exception:
+                            selected_mod = None
+
+                        res = module_details_screen(
+                            main_player,
+                            player_fleet,
+                            initial_section=selected_section,
+                            installed_sections=SECTION_MODULES,
+                            selected_module=selected_mod,
+                        )
+                        if res == "to_game":
+                            return "to_game"
+                        try:
+                            if isinstance(res, int):
+                                selected_section = res
+                        except Exception:
+                            pass
+                        break
 
         # ---------- CAPACITY CALCULATION FOR CURRENT SECTION ----------
         capacity_used = sum(m.capacity for m in current_modules)
@@ -250,35 +395,77 @@ def internal_modules_screen(main_player, player_fleet):
         screen.blit(close_surf, close_rect)
 
         # Tabs (draw using shared nav helper)
-        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font)
+        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font, disabled_labels=disabled_labels)
 
         # ---------- MAIN CONTENT ----------
 
         def draw_index_square(rect: pygame.Rect, label: str, selected: bool):
-            """Draw a fabrication-style index square with nav-colored corners."""
+            """Draw a fabrication-style index square with a three-bar icon replacing the numeric label.
+
+            The interior of the square is filled using the section base/hover colors and
+            a small three-vertical-bars icon is drawn in the centre. The filled bar
+            corresponds to the section index (left, centre, right).
+            """
+
             corner_color = UI_TAB_UNDERLINE_COLOR if selected else UI_TAB_TEXT_SELECTED
+            SOFT_SELECTED_FILL = (255, 200, 140)
             corner_len = 18
             corner_thick = 3
 
             # corner-only frame (identical pattern to fabrication 01 square)
-            # top-left
-            pygame.draw.line(screen, corner_color, (rect.left, rect.top), (rect.left + corner_len, rect.top), corner_thick)
-            pygame.draw.line(screen, corner_color, (rect.left, rect.top), (rect.left, rect.top + corner_len), corner_thick)
-            # top-right
-            pygame.draw.line(screen, corner_color, (rect.right - corner_len, rect.top), (rect.right, rect.top), corner_thick)
-            pygame.draw.line(screen, corner_color, (rect.right, rect.top), (rect.right, rect.top + corner_len), corner_thick)
-            # bottom-left
-            pygame.draw.line(screen, corner_color, (rect.left, rect.bottom - corner_len), (rect.left, rect.bottom), corner_thick)
-            pygame.draw.line(screen, corner_color, (rect.left, rect.bottom), (rect.left + corner_len, rect.bottom), corner_thick)
-            # bottom-right
-            pygame.draw.line(screen, corner_color, (rect.right - corner_len, rect.bottom), (rect.right, rect.bottom), corner_thick)
-            pygame.draw.line(screen, corner_color, (rect.right, rect.bottom - corner_len), (rect.right, rect.bottom), corner_thick)
+            if(selected):
+                # top-left
+                pygame.draw.line(screen, corner_color, (rect.left, rect.top), (rect.left + corner_len, rect.top), corner_thick)
+                pygame.draw.line(screen, corner_color, (rect.left, rect.top), (rect.left, rect.top + corner_len), corner_thick)
+                # top-right
+                pygame.draw.line(screen, corner_color, (rect.right - corner_len, rect.top), (rect.right, rect.top), corner_thick)
+                pygame.draw.line(screen, corner_color, (rect.right, rect.top), (rect.right, rect.top + corner_len), corner_thick)
+                # bottom-left
+                pygame.draw.line(screen, corner_color, (rect.left, rect.bottom - corner_len), (rect.left, rect.bottom), corner_thick)
+                pygame.draw.line(screen, corner_color, (rect.left, rect.bottom), (rect.left + corner_len, rect.bottom), corner_thick)
+                # bottom-right
+                pygame.draw.line(screen, corner_color, (rect.right - corner_len, rect.bottom), (rect.right, rect.bottom), corner_thick)
+                pygame.draw.line(screen, corner_color, (rect.right, rect.bottom - corner_len), (rect.right, rect.bottom), corner_thick)
 
-            # index label
-            idx_font = pygame.font.Font(None, 36)
-            idx_text = idx_font.render(label, True, corner_color)
-            idx_text_rect = idx_text.get_rect(center=rect.center)
-            screen.blit(idx_text, idx_text_rect)
+            # Draw a small three-vertical-bars icon in the centre of the rect.
+            # Which bar is filled depends on the numeric label ("01","02","03").
+            # Map labels to indices: "01"->0 (left), "02"->1 (centre), "03"->2 (right)
+            try:
+                sel_idx = int(label) - 1
+            except Exception:
+                sel_idx = 1
+
+            icon_w = int(rect.width * 0.96)
+            icon_h = int(rect.height * 0.54)
+            icon_top = rect.centery - icon_h // 2
+
+            # Divide icon area into three vertical segments
+            bar_w = max(6, icon_w // 7)
+            gap = max(6, bar_w // 10)
+
+            bar_widths = [bar_w, bar_w, bar_w]
+            bar_widths[sel_idx] = bar_w * 3  # widen only the selected one
+
+            total_width = bar_widths[0] + gap + bar_widths[1] + gap + bar_widths[2]
+
+            # Fixed left boundary (does not change when filled bar width changes)
+            left_x = rect.centerx - total_width // 2
+
+            bars = []
+            cursor_x = left_x
+
+            for i, bw in enumerate(bar_widths):
+                bars.append(pygame.Rect(cursor_x, icon_top, bw, icon_h))
+                cursor_x += bw + gap
+
+            # Colors: filled bar uses corner_color (or underline color), outlines use a muted bright
+            filled_col = SOFT_SELECTED_FILL if selected else UI_ICON_BLUE
+
+            for i, b in enumerate(bars):
+                # draw outline rectangle thin
+                pygame.draw.rect(screen, filled_col, b, 2)
+                if i == sel_idx:
+                    pygame.draw.rect(screen, filled_col, b.inflate(-4, -4))
 
         # Left index column (01 / 02 / 03)
         for i, rect in enumerate(idx_rects, start=1):
@@ -355,7 +542,8 @@ def internal_modules_screen(main_player, player_fleet):
         cap_value_text = f"{clamped_used}/{capacity_max}"
         cap_value_surf = title_font.render(cap_value_text, True, UI_TITLE_COLOR)
         cap_value_rect = cap_value_surf.get_rect()
-        cap_value_rect.left = capacity_panel_rect.left
+        # Right-anchor the numeric value so its width changes don't shift layout
+        cap_value_rect.right = capacity_panel_rect.right
         cap_value_rect.top = cap_title_rect.bottom + 8
         screen.blit(cap_value_surf, cap_value_rect)
 
@@ -369,7 +557,8 @@ def internal_modules_screen(main_player, player_fleet):
             bar_height,
         )
         pygame.draw.rect(screen, (20, 36, 64), bar_rect)
-        inner_w = max(2, int(bar_width * capacity_ratio))
+        # Use rounding to avoid one-pixel truncation flicker when capacity changes
+        inner_w = max(2, int(round(bar_width * capacity_ratio)))
         inner_rect = pygame.Rect(bar_rect.left, bar_rect.top, inner_w, bar_rect.height)
         pygame.draw.rect(screen, (80, 200, 120), inner_rect)
         pygame.draw.rect(screen, (40, 90, 140), bar_rect, width=2)

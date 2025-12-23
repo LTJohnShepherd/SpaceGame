@@ -1,9 +1,9 @@
-from spacegame.models.resources.ore import Ore
+from spacegame.models.ores.ore import Ore
 
 
-class RUOreC(Ore):
+class RUOreB(Ore):
     """
-    Concrete ore for the RU TYPE C ORE.
+    Concrete ore for the RU TYPE B ORE.
     """
 
     def __init__(self, quantity: int = 0):
@@ -13,16 +13,16 @@ class RUOreC(Ore):
 
     @property
     def name(self) -> str:
-        return "RU TYPE C ORE"
+        return "RU TYPE B ORE"
 
     @property
     def preview_filename(self) -> str:
         if(self.tier == 1):
-            return "RUOreCT1.png"
+            return "RUOreBT1.png"
         elif(self.tier == 2):
-            return "RUOreCT2.png"
+            return "RUOreBT2.png"
         else:
-            return "RUOreCT3.png"
+            return "RUOreBT3.png"
 
     def __repr__(self) -> str:
-        return f"<RUOreC qty={self.quantity} / {self.max_stack}>"
+        return f"<RUOreB qty={self.quantity} / {self.max_stack}>"

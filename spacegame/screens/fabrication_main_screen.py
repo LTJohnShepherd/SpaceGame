@@ -14,6 +14,7 @@ from spacegame.config import (
     )
 
 from spacegame.models.modules.fabricatormodule import FabricatorModule
+from spacegame.core.modules_manager import manager as modules_manager
 from spacegame.core.fabrication import get_fabrication_manager
 from spacegame.ui.nav_ui import create_tab_entries, draw_tabs
 from spacegame.ui.fabrication_ui import (
@@ -63,6 +64,11 @@ def fabrication_main_screen(main_player, player_fleet):
     selected_tab = 2  # FABRICATION selected
 
     tab_entries, tabs_y = create_tab_entries(tab_labels, tab_font, width, TOP_BAR_HEIGHT, UI_TAB_HEIGHT)
+    disabled_labels = set()
+    if not modules_manager.get_fabricators():
+        disabled_labels.add("FABRICATION")
+    if not modules_manager.get_refineries():
+        disabled_labels.add("REFINING")
 
     # ---------- FABRICATOR MODULE SLOTS (01 / 02 / ...) ----------
     manager = get_fabrication_manager(main_player)
@@ -118,6 +124,9 @@ def fabrication_main_screen(main_player, player_fleet):
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
                         label = entry["label"]
+                        # ignore clicks on disabled tabs
+                        if label in disabled_labels:
+                            break
                         # Open Storage (Inventory) when STORAGE tab clicked
                         if label == "STORAGE":
                             from spacegame.screens.inventory import inventory_screen
@@ -133,8 +142,17 @@ def fabrication_main_screen(main_player, player_fleet):
                             res = internal_modules_screen(main_player, player_fleet)
                             if res == "to_game":
                                 return "to_game"
+                            if res == "to_internal":
+                                return "to_internal"
                             # after closing, go back to FABRICATION tab highlight
                             selected_tab = 2
+                        elif label == "REFINING":
+                            from spacegame.screens.refining_main_screen import refining_main_screen
+
+                            res = refining_main_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                            selected_tab = 3
                         else:
                             selected_tab = idx
                         break
@@ -193,7 +211,7 @@ def fabrication_main_screen(main_player, player_fleet):
         screen.blit(close_surf, close_rect)
 
         # Tabs (draw using shared nav helper)
-        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font)
+        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font, disabled_labels=disabled_labels)
 
         # ---------- MAIN CONTENT (fabrication visual) ----------
         content_top = nav_bottom_y + 24  # same as used when we built card_rect
@@ -261,7 +279,7 @@ def fabrication_main_screen(main_player, player_fleet):
 
         # Statistics for the currently selected fabricator module (slot 01 / 02 / ...)
         if 0 <= selected_fabricator_index < len(fabricator_modules):
-            fabricator_module = fabricator_modules[selected_fabricator_index]
+            fabricator_module = fabricator_modules[selected_fabricator_index] if selected_fabricator_index < len(fabricator_modules) else None
         else:
             fabricator_module = FabricatorModule()
 

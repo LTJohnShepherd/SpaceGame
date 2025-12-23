@@ -46,6 +46,38 @@ def draw_index_square(screen: pygame.Surface, rect: pygame.Rect, label: str, sel
     screen.blit(idx_text, it_rect)
 
 
+def draw_index_lines(screen: pygame.Surface, rect: pygame.Rect, label: str, selected: bool,
+                    underline_color, text_selected_color, line_thickness: int = 4,
+                    index_font: pygame.font.Font | None = None) -> None:
+    """Draw a minimal index marker with a horizontal line above and below the
+    combined label + progress area, matching the refinery visual style.
+
+    The top line is inset from the rect top, and the bottom line sits just
+    beneath the progress bar area so the slot's small progress bar remains
+    visible between the lines.
+    """
+    color = underline_color if selected else text_selected_color
+
+    # positions: top line near top, progress bar sits at rect.bottom - 22 (see draw_slot_progress)
+    top_y = rect.top + 12
+    progress_top = rect.bottom - 22
+    # bottom line just below the progress bar's bottom (progress_top + 12 -> bottom at -10)
+    bottom_y = rect.bottom - 6
+
+    # Draw horizontal lines across the rect (a little padding left/right)
+    pad = 2
+    pygame.draw.line(screen, color, (rect.left + pad, top_y), (rect.right - pad, top_y), line_thickness)
+    pygame.draw.line(screen, color, (rect.left + pad, bottom_y), (rect.right - pad, bottom_y), line_thickness)
+
+    # Render label roughly centered between top line and progress area
+    if index_font is None:
+        index_font = pygame.font.Font(None, 36)
+    label_y = int((top_y + progress_top) / 2)
+    idx_text = index_font.render(label, True, color)
+    it_rect = idx_text.get_rect(center=(rect.centerx, label_y))
+    screen.blit(idx_text, it_rect)
+
+
 def draw_slot_progress(screen: pygame.Surface, rect: pygame.Rect, progress: float,
                        pb_margin: int = 12, progress_color=(255, 160, 40), bg_color=(40, 50, 70)) -> None:
     """Draw a thin progress bar anchored to the bottom of `rect`.

@@ -195,7 +195,6 @@ def squad_detail_screen(main_player, player_fleet, slot_index: int):
     title_rect = title_surf.get_rect(center=(width // 2, UI_TOP_BAR_HEIGHT // 2 - 22))
 
     tabs_y = UI_TOP_BAR_HEIGHT - UI_TAB_HEIGHT - 4
-    nav_top_y = tabs_y - 6
     nav_bottom_y = tabs_y + UI_TAB_HEIGHT + 6
 
     nav_center_y = UI_TOP_BAR_HEIGHT // 1.3

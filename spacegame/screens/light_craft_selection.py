@@ -12,7 +12,7 @@ from spacegame.ui.fleet_management_ui import (
     draw_fleet_section_titles,
     compute_fleet_preview_layout,
 )
-from spacegame.ui.ui import preview_for_unit, scaled_preview_for_unit
+from spacegame.ui.ui import scaled_preview_for_unit
 from spacegame.models.units.interceptor import Interceptor
 from spacegame.models.units.plasma_bomber import PlasmaBomber
 from spacegame.models.units.frigate import Frigate

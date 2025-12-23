@@ -17,10 +17,13 @@ from spacegame.config import PREVIEWS_DIR
 from spacegame.models.blueprints.interceptorblueprint import BPInterceptor
 from spacegame.models.blueprints.resourcecollectorblueprint import BPResourceCollector
 from spacegame.models.blueprints.plasmabomberblueprint import BPPlasmaBomber
+from spacegame.models.blueprints.refineryblueprint import BPRefinery
+from spacegame.models.blueprints.fabricatorblueprint import BPFabricator
 from spacegame.ui.fleet_management_ui import draw_tier_icon
 from spacegame.core.fabrication import get_fabrication_manager
 from spacegame.screens.fabrication_bpdetails_screen import fabrication_bpdetails_screen
 from spacegame.ui.nav_ui import create_tab_entries, draw_tabs
+from spacegame.core.modules_manager import manager as modules_manager
 from spacegame.ui.fabrication_ui import (
     generate_slot_rects,
     draw_index_square,
@@ -68,12 +71,16 @@ def fabrication_bpselect_screen(main_player, player_fleet, selected_fabricator_i
 
     # Use central nav helper to compute tab entries and layout
     tab_entries, tabs_y = create_tab_entries(tab_labels, tab_font, width, TOP_BAR_HEIGHT, UI_TAB_HEIGHT)
+    disabled_labels = set()
+    if not modules_manager.get_fabricators():
+        disabled_labels.add("FABRICATION")
+    if not modules_manager.get_refineries():
+        disabled_labels.add("REFINING")
 
     # ---------- FABRICATOR MODULE SLOTS (01 / 02 / ...) ----------
     manager = get_fabrication_manager(main_player)
-    fabricator_modules = manager.get_modules()
-    if not fabricator_modules:
-        fabricator_modules = [None]
+    fabricator_modules = manager.get_modules() or []
+    slot_count = max(1, len(fabricator_modules))
 
     # use manager's persisted selected index and clamp to valid range
     selected_fabricator_index = manager.get_selected_index()
@@ -93,19 +100,7 @@ def fabrication_bpselect_screen(main_player, player_fleet, selected_fabricator_i
     idx_size = 96
     idx_rect_base = pygame.Rect(card_rect.left + 16, card_rect.top + 16, idx_size, idx_size)
     IDX_V_SPACING = idx_size + 24
-    idx_rects = generate_slot_rects(idx_rect_base, len(fabricator_modules), IDX_V_SPACING)
-
-    # ---------- SECTION / CARDS LAYOUT ----------
-    section_width = int(width * 0.32)
-    section_height = 56
-
-    def centered_rect(cx, cy):
-        return pygame.Rect(
-            cx - section_width // 2,
-            cy - section_height // 2,
-            section_width,
-            section_height,
-        )
+    idx_rects = generate_slot_rects(idx_rect_base, slot_count, IDX_V_SPACING)
 
     # Layout / card constants reused from inventory screen style
     BOX_W = 260
@@ -122,11 +117,17 @@ def fabrication_bpselect_screen(main_player, player_fleet, selected_fabricator_i
 
     # Build blueprint categories (SHIPS includes interceptors, collectors and bombers)
     categories = [
-        ("SHIPS", [BPInterceptor(), BPPlasmaBomber(), BPResourceCollector()]),
+        ("SHIPS", [BPInterceptor(), BPPlasmaBomber(), BPResourceCollector(), BPRefinery(), BPFabricator()]),
     ]
 
     running = True
     while running:
+        # Recompute disabled tabs each frame to stay in sync with ModulesManager
+        disabled_labels = set()
+        if not modules_manager.get_fabricators():
+            disabled_labels.add("FABRICATION")
+        if not modules_manager.get_refineries():
+            disabled_labels.add("REFINING")
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -148,6 +149,9 @@ def fabrication_bpselect_screen(main_player, player_fleet, selected_fabricator_i
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
                         label = entry["label"]
+                        # ignore clicks on disabled tabs
+                        if label in disabled_labels:
+                            break
                         # Open Storage (Inventory) when STORAGE tab clicked
                         if label == "STORAGE":
                             from spacegame.screens.inventory import inventory_screen
@@ -163,7 +167,17 @@ def fabrication_bpselect_screen(main_player, player_fleet, selected_fabricator_i
                             res = internal_modules_screen(main_player, player_fleet)
                             if res == "to_game":
                                 return "to_game"
+                            if res == "to_internal":
+                                return "to_internal"
                             # after closing, go back to FABRICATION tab highlight
+                            selected_tab = 2
+                        elif label == "REFINING":
+                            from spacegame.screens.refining_main_screen import refining_main_screen
+
+                            res = refining_main_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                            # after closing, return focus back to FABRICATION tab
                             selected_tab = 2
                         else:
                             selected_tab = idx
@@ -243,7 +257,7 @@ def fabrication_bpselect_screen(main_player, player_fleet, selected_fabricator_i
         screen.blit(close_surf, close_rect)
 
         # Tabs (draw using shared nav helper)
-        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font)
+        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font, disabled_labels=disabled_labels)
 
         # ---------- MAIN CONTENT (fabrication visual) ----------
         content_top = nav_bottom_y + 24
@@ -359,19 +373,12 @@ def fabrication_bpselect_screen(main_player, player_fleet, selected_fabricator_i
                 tier_value = getattr(bp, "tier", 0)
                 draw_tier_icon(screen, draw_rect, tier_value)
 
-                # preview image (load by filename)
-                try:
-                    img = pygame.image.load(PREVIEWS_DIR + "/" + bp.preview_filename)
-                    img = pygame.transform.smoothscale(img, (48, 48))
-                    img_rect = img.get_rect(
-                        center=(draw_rect.x + 40, draw_rect.y + draw_rect.height // 2)
-                    )
-                    screen.blit(img, img_rect.topleft)
-                except Exception:
-                    # fallback: small empty box
-                    placeholder = pygame.Surface((48, 48))
-                    placeholder.fill((40, 40, 60))
-                    screen.blit(placeholder, (draw_rect.x + 16, draw_rect.y + 16))
+                img = pygame.image.load(PREVIEWS_DIR + "/" + bp.preview_filename)
+                img = pygame.transform.smoothscale(img, (48, 48))
+                img_rect = img.get_rect(
+                    center=(draw_rect.x + 40, draw_rect.y + draw_rect.height // 2)
+                )
+                screen.blit(img, img_rect.topleft)
 
                 # name/title: prefer bp.title (can contain '\n'), fallback to bp.name
                 try:

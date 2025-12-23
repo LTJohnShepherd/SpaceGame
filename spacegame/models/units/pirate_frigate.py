@@ -40,7 +40,7 @@ class PirateFrigate(SpaceUnit):
         )
 
         # use sprite size for collisions / drawing
-        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), **kwargs)
+        super().__init__(start_pos, ship_size=scaled_sprite.get_size(), rarity="common", **kwargs)
         self.base_surf = scaled_sprite
 
         # Combat stats

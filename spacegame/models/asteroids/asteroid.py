@@ -22,11 +22,7 @@ class Asteroid(ABC):
 
     def draw(self, surface):
         """Draw asteroid using sprite if available, otherwise a simple circle."""
-        # If subclass provided a sprite surface, prefer that
         img = getattr(self, "_sprite", None)
-        if img is not None:
-            rect = img.get_rect(center=(int(self.pos.x), int(self.pos.y)))
-            surface.blit(img, rect.topleft)
-        else:
-            pygame.draw.circle(surface, (90, 90, 100), (int(self.pos.x), int(self.pos.y)), self.radius)
-            pygame.draw.circle(surface, (60, 60, 70), (int(self.pos.x), int(self.pos.y)), self.radius, 2)
+        rect = img.get_rect(center=(int(self.pos.x), int(self.pos.y)))
+        surface.blit(img, rect.topleft)
+

@@ -1,4 +1,5 @@
 import pygame
+import random
 from pygame.math import Vector2
 from spacegame.models.units.fleet_unit import SpaceUnit
 from spacegame.models.units.pirate_frigate import PirateFrigate
@@ -23,6 +24,8 @@ from spacegame.config import (
     SEPARATION_ITER,
     IMAGES_DIR,
     PREVIEWS_DIR,
+    ENEMY_SPAWN_INTERVAL,
+    ENEMY_SPAWN_COUNT,
 )
 from spacegame.screens.internal_screen import internal_screen
 
@@ -158,6 +161,9 @@ def run_game():
         PirateFrigate((700, 120)),
         #PirateFrigate((120, 500)),
     ]
+
+    # Spawn timer for enemy waves
+    spawn_timer = ENEMY_SPAWN_INTERVAL
 
     projectiles = []
 
@@ -341,6 +347,32 @@ def run_game():
                 else:
                     e.mover.set_target(e.pos)  # hold & shoot
             e.mover.update(dt)
+
+        # --- Enemy spawning (timed waves) ---
+        if ENEMY_SPAWN_INTERVAL > 0:
+            spawn_timer -= dt
+            if spawn_timer <= 0:
+                spawn_timer = ENEMY_SPAWN_INTERVAL
+                # spawn N pirates at random edge positions
+                for _ in range(max(1, ENEMY_SPAWN_COUNT)):
+                    # choose an edge: 0=top,1=right,2=bottom,3=left
+                    edge = random.randrange(4)
+                    margin = 40
+                    if edge == 0:  # top
+                        x = random.uniform(margin, WIDTH - margin)
+                        y = -random.uniform(20, 120)
+                    elif edge == 1:  # right
+                        x = WIDTH + random.uniform(20, 120)
+                        y = random.uniform(margin, HEIGHT - margin)
+                    elif edge == 2:  # bottom
+                        x = random.uniform(margin, WIDTH - margin)
+                        y = HEIGHT + random.uniform(20, 120)
+                    else:  # left
+                        x = -random.uniform(20, 120)
+                        y = random.uniform(margin, HEIGHT - margin)
+
+                    new_enemy = PirateFrigate((x, y))
+                    enemy_fleet.append(new_enemy)
 
         # --- Auto-fire: both sides ---
         for p in player_fleet:

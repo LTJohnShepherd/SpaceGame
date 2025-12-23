@@ -1,9 +1,7 @@
 import pygame
-from typing import List, Optional
-from spacegame.models.modules.fabricatormodule import (
-    FabricatorModule,
-    get_fabricator_modules_for_ship,
-)
+from typing import List
+from spacegame.models.modules.fabricatormodule import FabricatorModule
+from spacegame.core.modules_manager import manager as modules_manager
 from spacegame.core.hangar import HangarEntry
 
 
@@ -16,25 +14,20 @@ class FabricationManager:
     """
 
     def __init__(self):
-        # initialize persistent module instances for this manager
-        modules = get_fabricator_modules_for_ship() or []
-        # ensure at least one module exists
-        if not modules:
-            modules = [FabricatorModule()]
-        self.modules: List[FabricatorModule] = modules
-        # which fabricator slot is currently selected in UI (persisted)
+        # FabricationManager no longer owns module persistence; modules are
+        # provided by the central ModulesManager. Keep only UI selection state.
         self.selected_index: int = 0
         # owner/player reference (set by get_fabrication_manager)
         self.player = None
 
     def get_modules(self) -> List[FabricatorModule]:
-        return self.modules
+        return modules_manager.get_fabricators()
 
     def get_module(self, index: int) -> FabricatorModule:
-        if 0 <= index < len(self.modules):
-            return self.modules[index]
-        # return a fallback module (not persisted) if out-of-range
-        return FabricatorModule()
+        mods = self.get_modules() or []
+        if 0 <= index < len(mods):
+            return mods[index]
+        return None
 
     def start_fabrication(self, index: int, blueprint, player) -> bool:
         """Start fabricating `blueprint` in module `index` if resources exist.
@@ -62,6 +55,9 @@ class FabricationManager:
         # Blueprint `base_fabrication_time` is typically expressed in seconds.
         # Module `base_fabrication_time` is a multiplier (e.g. 1.0).
         blueprint_time = float(getattr(blueprint, "base_fabrication_time", 0))
+        if module is None:
+            return False
+
         module_factor = float(getattr(module, "base_fabrication_time", 1.0))
         total_seconds = blueprint_time * module_factor
         total_ms = max(1, int(total_seconds * 1000))
@@ -88,6 +84,8 @@ class FabricationManager:
 
     def cancel_fabrication(self, index: int) -> None:
         module = self.get_module(index)
+        if module is None:
+            return
         module.fabrication_total_ms = 0
         module.fabrication_start_ticks = 0
         module.fabrication_progress = 0.0
@@ -95,6 +93,8 @@ class FabricationManager:
 
     def speed_up(self, index: int) -> None:
         module = self.get_module(index)
+        if module is None:
+            return
         total_ms = int(getattr(module, "fabrication_total_ms", 0))
         if total_ms > 0:
             # set start_ticks so that elapsed >= total_ms (complete instantly)
@@ -109,7 +109,7 @@ class FabricationManager:
         module = self.get_module(index)
         # If the module has no assigned blueprint, consider it idle regardless
         # of any lingering timer fields.
-        blueprint = getattr(module, "fabrication_blueprint", None)
+        blueprint = getattr(module, "fabrication_blueprint", None) if module is not None else None
         if blueprint is None:
             # No active fabrication assigned to this module. Return idle status.
             # Do not expose the module's internal `base_fabrication_time` here
@@ -117,8 +117,12 @@ class FabricationManager:
             # should compute blueprint_time * module_factor themselves.
             progress = 0.0
             remaining_s = 0
-            module.fabrication_progress = progress
-            module.fabrication_remaining_s = remaining_s
+            if module is not None:
+                try:
+                    module.fabrication_progress = progress
+                    module.fabrication_remaining_s = remaining_s
+                except Exception:
+                    pass
             return {
                 "total_ms": 0,
                 "start_ticks": 0,
@@ -128,8 +132,8 @@ class FabricationManager:
                 "blueprint": None,
             }
 
-        total_ms = int(getattr(module, "fabrication_total_ms", 0))
-        start_ticks = int(getattr(module, "fabrication_start_ticks", 0))
+        total_ms = int(getattr(module, "fabrication_total_ms", 0)) if module is not None else 0
+        start_ticks = int(getattr(module, "fabrication_start_ticks", 0)) if module is not None else 0
         now_ticks = int(pygame.time.get_ticks())
 
         if total_ms > 0 and start_ticks > 0:
@@ -147,12 +151,13 @@ class FabricationManager:
                     pass
         else:
             progress = 0.0
-            remaining_s = int(getattr(module, "base_fabrication_time", 0))
+            remaining_s = int(getattr(module, "base_fabrication_time", 0)) if module is not None else 0
             is_fabricating = False
 
         # keep module fields in sync for UI code
-        module.fabrication_progress = progress
-        module.fabrication_remaining_s = remaining_s
+        if module is not None:
+            module.fabrication_progress = progress
+            module.fabrication_remaining_s = remaining_s
 
         return {
             "total_ms": total_ms,
@@ -207,7 +212,6 @@ class FabricationManager:
         entry = HangarEntry(id=next_id, name=entry_name, unit_type=unit_type, alive=True, tier=getattr(bp, "tier", 0), rarity=getattr(bp, "rarity", ""))
         # Add via InventoryManager (strict)
         inv_mgr.add_hangar_entry(entry)
-        added = True
 
         # Notify player (if present) so gameplay HUD can show a popup
         try:
@@ -245,15 +249,17 @@ class FabricationManager:
 
     def get_selected_index(self) -> int:
         # clamp to valid range
-        if not self.modules:
+        mods = self.get_modules() or []
+        if not mods:
             return 0
-        return max(0, min(self.selected_index, len(self.modules) - 1))
+        return max(0, min(self.selected_index, len(mods) - 1))
 
     def set_selected_index(self, index: int) -> None:
-        if not self.modules:
+        mods = self.get_modules() or []
+        if not mods:
             self.selected_index = 0
             return
-        self.selected_index = max(0, min(int(index), len(self.modules) - 1))
+        self.selected_index = max(0, min(int(index), len(mods) - 1))
 
     def update(self) -> None:
         """Perform a passive per-frame update: check all modules and finalize
@@ -264,7 +270,8 @@ class FabricationManager:
         # iterate modules and call get_status which will internally finalize
         # completed modules (get_status already contains the finalize call).
         try:
-            for i in range(len(self.modules)):
+            mods = self.get_modules() or []
+            for i in range(len(mods)):
                 # ignore returned status; get_status has side-effects we rely on
                 self.get_status(i)
         except Exception:

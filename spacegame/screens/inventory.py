@@ -1,12 +1,15 @@
 import sys
 import pygame
 from spacegame.ui.fleet_management_ui import draw_tier_icon
-from spacegame.ui.ui import preview_for_unit, OREM_PREVIEW_IMG, scaled_preview_for_unit
+from spacegame.ui.ui import OREM_PREVIEW_IMG, scaled_preview_for_unit
 from spacegame.models.units.interceptor import Interceptor
-from spacegame.models.resources.orem import RUOreM
-from spacegame.models.resources.orea import RUOreA
-from spacegame.models.resources.oreb import RUOreB
-from spacegame.models.resources.orec import RUOreC
+from spacegame.models.ores.orem import RUOreM
+from spacegame.models.ores.orea import RUOreA
+from spacegame.models.ores.oreb import RUOreB
+from spacegame.models.ores.orec import RUOreC
+from spacegame.models.resources.refineda import RURefinedA
+from spacegame.models.resources.refinedb import RURefinedB
+from spacegame.models.resources.refinedc import RURefinedC
 from spacegame.config import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
@@ -21,6 +24,7 @@ from spacegame.config import (
 )
 from spacegame.config import PREVIEWS_DIR
 from spacegame.ui.nav_ui import create_tab_entries, draw_tabs
+from spacegame.core.modules_manager import manager as modules_manager
 
 
 def inventory_screen(main_player, player_fleet):
@@ -72,6 +76,11 @@ def inventory_screen(main_player, player_fleet):
     selected_tab = 0  # INVENTORY selected
 
     tab_entries, tabs_y = create_tab_entries(tab_labels, tab_font, width, TOP_BAR_HEIGHT, UI_TAB_HEIGHT)
+    disabled_labels = set()
+    if not modules_manager.get_fabricators():
+        disabled_labels.add("FABRICATION")
+    if not modules_manager.get_refineries():
+        disabled_labels.add("REFINING")
 
     # ---- layout helpers for the cards ----
     BOX_W = 260
@@ -80,14 +89,16 @@ def inventory_screen(main_player, player_fleet):
     MARGIN_X = 18
     MARGIN_Y = 18
 
+    # precompute left start so titles can align with the first card
+    _total_w = COLS * BOX_W + (COLS - 1) * MARGIN_X
+    LEFT_START = width // 2 - _total_w // 2
+
     def layout_rects(num_items, top_y):
-        total_w = COLS * BOX_W + (COLS - 1) * MARGIN_X
-        left_start = width // 2 - total_w // 2
         rects = []
         for i in range(num_items):
             row = i // COLS
             col = i % COLS
-            x = left_start + col * (BOX_W + MARGIN_X)
+            x = LEFT_START + col * (BOX_W + MARGIN_X)
             y = top_y + row * (BOX_H + MARGIN_Y)
             rects.append(pygame.Rect(x, y, BOX_W, BOX_H))
         return rects
@@ -101,11 +112,19 @@ def inventory_screen(main_player, player_fleet):
     SCROLL_SMOOTH = 0.25    # 0..1, higher = snappier
 
     while running:
+        # Recompute disabled tabs each frame to stay in sync with ModulesManager
+        disabled_labels = set()
+        if not modules_manager.get_fabricators():
+            disabled_labels.add("FABRICATION")
+        if not modules_manager.get_refineries():
+            disabled_labels.add("REFINING")
         # Recompute alive/selected/stored every frame from the InventoryManager-backed Hangar
         inv_mgr = getattr(main_player, 'inventory_manager', None)
         if inv_mgr is None or getattr(inv_mgr, 'hangar', None) is None:
             raise RuntimeError("Hangar/InventoryManager not available on main_player; migration required")
         hangar = inv_mgr.hangar
+
+        # Inventory modules are sourced directly from the InventoryManager's `get_modules()`.
 
         alive_entries = hangar.alive_pool_entries()
         selected_ids = hangar.selected_interceptor_ids()
@@ -135,6 +154,19 @@ def inventory_screen(main_player, player_fleet):
         if c_qty > 0:
             resources_items.append(RUOreC(quantity=c_qty))
 
+        # Refined materials (future acquisition method) mapped to 'RA','RB','RC'
+        ra_qty = int(inv_mgr.get_amount('RA')) if inv_mgr is not None else 0
+        if ra_qty > 0:
+            resources_items.append(RURefinedA(quantity=ra_qty))
+
+        rb_qty = int(inv_mgr.get_amount('RB')) if inv_mgr is not None else 0
+        if rb_qty > 0:
+            resources_items.append(RURefinedB(quantity=rb_qty))
+
+        rc_qty = int(inv_mgr.get_amount('RC')) if inv_mgr is not None else 0
+        if rc_qty > 0:
+            resources_items.append(RURefinedC(quantity=rc_qty))
+
         # ---------- EVENTS ----------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -157,6 +189,9 @@ def inventory_screen(main_player, player_fleet):
                 for idx, entry in enumerate(tab_entries):
                     if entry["rect"].collidepoint(mx, my):
                         label = entry["label"]
+                        # ignore clicks on disabled tabs
+                        if label in disabled_labels:
+                            break
                         # Open Fabrication when FABRICATION tab clicked
                         if label == "FABRICATION":
                             from spacegame.screens.fabrication_main_screen import fabrication_main_screen
@@ -166,12 +201,22 @@ def inventory_screen(main_player, player_fleet):
                                 return "to_game"
                             # return focus back to STORAGE tab after closing fabrication
                             selected_tab = 0
+                        elif label == "REFINING":
+                            from spacegame.screens.refining_main_screen import refining_main_screen
+
+                            res = refining_main_screen(main_player, player_fleet)
+                            if res == "to_game":
+                                return "to_game"
+                            # return focus back to STORAGE tab after closing refining
+                            selected_tab = 0
                         elif label == "INTERNAL MODULES":
                             from spacegame.screens.internal_modules_screen import internal_modules_screen
 
                             res = internal_modules_screen(main_player, player_fleet)
                             if res == "to_game":
                                 return "to_game"
+                            if res == "to_internal":
+                                return "to_internal"
                             # after closing, go back to STORAGE tab highlight
                             selected_tab = 0
                         else:
@@ -197,7 +242,21 @@ def inventory_screen(main_player, player_fleet):
         materials_top_y = materials_title_y + 40
         materials_rects = layout_rects(3, materials_top_y)
 
-        resources_title_y = materials_top_y + BOX_H + 40
+        # Modules (unequipped modules in inventory)
+        modules_title_y = materials_top_y + BOX_H + 40
+        modules_top_y = modules_title_y + 40
+        # Query inventory manager for module instances
+        modules_items = []
+        if inv_mgr is not None and hasattr(inv_mgr, 'get_modules'):
+            try:
+                modules_items = inv_mgr.get_modules() or []
+            except Exception:
+                modules_items = []
+        # Reserve space for modules layout (show 3 placeholders if empty)
+        modules_count_for_layout = len(modules_items) if len(modules_items) > 0 else 3
+        modules_rects = layout_rects(modules_count_for_layout, modules_top_y)
+
+        resources_title_y = modules_top_y + BOX_H + 40
         resources_top_y = resources_title_y + 40
         # If there are no actual resource items, we still reserve space for
         # three placeholder cards so scrolling and layout remain consistent.
@@ -285,7 +344,7 @@ def inventory_screen(main_player, player_fleet):
         screen.blit(close_surf, close_rect)
 
         # Tabs (draw using shared nav helper)
-        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font)
+        nav_top_y, nav_bottom_y = draw_tabs(screen, tab_entries, selected_tab, tabs_y, width, tab_font, disabled_labels=disabled_labels)
 
         # ---- SCROLLABLE AREA CLIP (cards + section titles go under the UI) ----
         scroll_clip_rect = pygame.Rect(0, scroll_area_top, width, height - scroll_area_top)
@@ -295,7 +354,7 @@ def inventory_screen(main_player, player_fleet):
         ships_title = section_font.render("SHIPS", True, (220, 220, 255))
         screen.blit(
             ships_title,
-            (width // 4.8 - ships_title.get_width() // 2, ships_title_y + offset_y),
+            (LEFT_START, ships_title_y + offset_y),
         )
 
         # Draw stored ships as cards
@@ -389,10 +448,10 @@ def inventory_screen(main_player, player_fleet):
                     pygame.draw.rect(screen, (60, 100, 150), draw_ph, 1, border_radius=0)
 
         # ---- Materials section (title + placeholder cards) ----
-        materials_title = section_font.render("MATERIALS", True, (220, 220, 255))
+        materials_title = section_font.render("INTERMEDIATE PRODUCTS", True, (220, 220, 255))
         screen.blit(
             materials_title,
-            (width // 4.3 - materials_title.get_width() // 2, materials_title_y + offset_y),
+            (LEFT_START, materials_title_y + offset_y),
         )
 
         for rect in materials_rects:
@@ -400,11 +459,63 @@ def inventory_screen(main_player, player_fleet):
             pygame.draw.rect(screen, (20, 35, 60), draw_rect, border_radius=0)
             pygame.draw.rect(screen, (60, 100, 150), draw_rect, 1, border_radius=0)
 
+        # ---- Modules section (unequipped modules from inventory) ----
+        modules_title = section_font.render("MODULES", True, (220, 220, 255))
+        screen.blit(
+            modules_title,
+            (LEFT_START, modules_title_y + offset_y),
+        )
+
+        # Draw module cards
+        for rect, module in zip(modules_rects, modules_items):
+            draw_rect = rect.move(0, offset_y)
+            pygame.draw.rect(screen, (30, 40, 70), draw_rect, border_radius=0)
+            pygame.draw.rect(screen, UI_ICON_BLUE, draw_rect, 2, border_radius=0)
+            draw_tier_icon(screen, draw_rect, getattr(module, "tier", 0))
+
+            # preview/thumbnail
+            try:
+                preview_fn = getattr(module, 'preview_filename', None)
+                if preview_fn:
+                    loaded = pygame.image.load(PREVIEWS_DIR + "/" + preview_fn).convert_alpha()
+                    img = pygame.transform.smoothscale(loaded, (48, 48))
+                else:
+                    img = pygame.transform.smoothscale(OREM_PREVIEW_IMG, (48, 48))
+            except Exception:
+                img = pygame.transform.smoothscale(OREM_PREVIEW_IMG, (48, 48))
+
+            img_rect = img.get_rect(center=(draw_rect.x + 40, draw_rect.y + draw_rect.height // 2))
+            screen.blit(img, img_rect.topleft)
+
+            # Name label
+            name_surf = name_font.render(getattr(module, 'name', 'Module'), True, (230, 230, 255))
+            screen.blit(name_surf, (draw_rect.x + 96, draw_rect.y + 30))
+
+        # Draw placeholders for modules to fill the last row (match other sections)
+        items_per_row = 3
+        mod_count = len(modules_items)
+        if mod_count == 0:
+            # draw three placeholders
+            full_row_rects = layout_rects(items_per_row, modules_top_y)
+            for placeholder_rect in full_row_rects:
+                draw_ph = placeholder_rect.move(0, offset_y)
+                pygame.draw.rect(screen, (20, 35, 60), draw_ph, border_radius=0)
+                pygame.draw.rect(screen, (60, 100, 150), draw_ph, 1, border_radius=0)
+        else:
+            remainder = mod_count % items_per_row
+            if remainder != 0:
+                num_placeholders = items_per_row - remainder
+                full_row_rects = layout_rects(mod_count + num_placeholders, modules_top_y)
+                for placeholder_rect in full_row_rects[mod_count:]:
+                    draw_ph = placeholder_rect.move(0, offset_y)
+                    pygame.draw.rect(screen, (20, 35, 60), draw_ph, border_radius=0)
+                    pygame.draw.rect(screen, (60, 100, 150), draw_ph, 1, border_radius=0)
+
         # ---- Resources section (actual ore cards) ----
         resources_title = section_font.render("RESOURCES", True, (220, 220, 255))
         screen.blit(
             resources_title,
-            (width // 4.25 - resources_title.get_width() // 2, resources_title_y + offset_y),
+            (LEFT_START, resources_title_y + offset_y),
         )
 
         for rect, ore in zip(resource_rects, resources_items):

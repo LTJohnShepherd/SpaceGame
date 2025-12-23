@@ -9,8 +9,7 @@ from spacegame.config import (
 class Projectile:
     # ---- Class-level defaults ----
     """
-    מחלקה: Projectile
-    תפקיד: ראה/י תיעוד הפונקציות והמאפיינים מטה. 
+    Projectile
     """
     SPEED = PROJECTILE_SPEED
     RADIUS = PROJECTILE_RADIUS

@@ -1,4 +1,4 @@
-from spacegame.models.resources.ore import Ore
+from spacegame.models.ores.ore import Ore
 
 
 class RUOreM(Ore):
